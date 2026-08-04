@@ -179,7 +179,6 @@ if __name__ == "__main__":
 
     print("\nInput Shape:")
     print(tokens.shape)
-
     print("\nOutput Shape:")
     print(output.shape)
 
