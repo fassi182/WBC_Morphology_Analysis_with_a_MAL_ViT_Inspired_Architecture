@@ -4,74 +4,79 @@
 
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.2+-EE4C2C?logo=pytorch&logoColor=white)
-![Vision Transformer](https://img.shields.io/badge/Vision%20Transformer-ViT-blueviolet)
-![Medical AI](https://img.shields.io/badge/Domain-Medical%20AI-success)
+![Vision Transformer](https://img.shields.io/badge/Backbone-ViT-blueviolet)
+![Medical AI](https://img.shields.io/badge/Domain-Biomedical%20AI-success)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
 </p>
 
-> **An educational PyTorch implementation inspired by the MAL-ViT paper, adapted for White Blood Cell (WBC) morphology analysis and extended with a morphology-aware WBC analysis head.**
+> **A PyTorch implementation inspired by the MAL-ViT paper for learning clinically meaningful White Blood Cell morphology attributes and extending them with a downstream morphology-guided WBC recognition module.**
 
 ---
 
-## 📖 Overview
+# 📖 Overview
 
-This project explores **interpretable Vision Transformers** for White Blood Cell (WBC) morphology analysis by implementing the core ideas presented in the **MAL-ViT (Morphology Attribute Learning Vision Transformer)** paper.
+White Blood Cell (WBC) morphology provides valuable diagnostic information for many hematological disorders. Rather than predicting only the final cell category, this project explores a **morphology-first learning strategy**, where the model first learns interpretable morphological characteristics and then leverages those learned representations for downstream WBC recognition.
 
-Instead of relying solely on end-to-end classification, the model first learns **morphological attributes** through dedicated attribute tokens and then uses these learned representations for downstream WBC analysis.
+The implementation is inspired by the **Morphology Attribute Learning Vision Transformer (MAL-ViT)** paper and adapts its core architectural ideas using PyTorch.
 
-> **Note**
+As an extension, this project introduces an additional downstream module that utilizes the predicted morphology attributes for WBC recognition, providing a complete end-to-end learning pipeline.
+
+> **Implementation Note**
 >
-> This is an independent educational implementation inspired by the MAL-ViT paper. It aims to follow the paper's overall design philosophy but is **not an official reproduction**, and implementation details may differ.
+> This repository is an independent educational implementation inspired by the MAL-ViT paper. It follows the paper's overall design philosophy but is **not an official reproduction**, and some implementation details may differ.
 
 ---
 
-## 📝 Implementation at a Glance
+# 📝 Implementation at a Glance
 
 | Category | Details |
-|----------|---------|
+|-----------|---------|
 | 📄 Inspiration | MAL-ViT (Morphology Attribute Learning Vision Transformer) |
-| 🧠 Framework | PyTorch |
-| 🩸 Application | White Blood Cell Morphology Analysis |
-| 🖼️ Input | RGB Blood Smear Images (224×224) |
-| 🧬 Dataset | WBCAtt |
-| 🏗️ Backbone | ViT-inspired Transformer |
-| 🎯 Learning Strategy | Morphology Attribute Learning + Multi-task Learning |
-| ➕ Project Extension | Morphology-aware WBC Analysis Head |
-| 🎓 Purpose | Educational implementation to understand and extend MAL-ViT |
-
-## ✨ Key Features
-
-| Feature | Why It Matters |
-|---------|----------------|
-| 🧩 Modular PyTorch Design | Each major component is implemented as an independent module for easier understanding and experimentation. |
-| 🧬 Morphology Attribute Learning | Uses learnable attribute tokens to capture morphology-aware representations following the MAL-ViT concept. |
-| 🏗️ Extensible Architecture | Designed so additional analysis or classification modules can be integrated with minimal changes. |
-| 📊 End-to-End Pipeline | Includes data loading, training, validation, testing, checkpointing, and inference. |
-| 📖 Educational Focus | Aims to demonstrate how modern Vision Transformer architectures can be implemented from scratch in PyTorch. |
+| 🩸 Task | Morphology Attribute Learning and Morphology-Guided WBC Recognition |
+| 🧬 Input | RGB Blood Smear Images (224 × 224) |
+| 📊 Outputs | 11 Morphology Attributes + WBC Prediction |
+| 🧠 Backbone | Vision Transformer (ViT-inspired) |
+| 🎯 Learning Strategy | Multi-Task Learning |
+| ➕ Project Extension | Downstream morphology-guided WBC recognition module |
+| 🧪 Dataset | WBCAtt |
+| ⚙️ Framework | PyTorch |
 
 ---
 
-## 🏗️ System Pipeline
+# ✨ Key Features
+
+| Feature | Description |
+|---------|-------------|
+| 🧬 Morphology Attribute Learning | Learns 11 clinically meaningful morphology attributes using dedicated attribute tokens. |
+| 🏗️ Transformer from Modular Components | Patch embedding, attention, encoder blocks and prediction heads are implemented as reusable PyTorch modules. |
+| 🔍 Multi-Task Learning | Simultaneously learns morphology attributes while optimizing downstream WBC recognition. |
+| ➕ Morphology-Guided Extension | Extends the MAL-ViT concept with an additional module that uses predicted morphology for WBC recognition. |
+| 📈 End-to-End Pipeline | Includes preprocessing, training, validation, testing, checkpointing and inference. |
+| 📚 Educational Implementation | Built to understand and study modern Vision Transformer architectures for biomedical imaging. |
+
+---
+
+# 🏗️ End-to-End Pipeline
 
 ```mermaid
 flowchart LR
 
 A["Blood Smear Image"]
 
-B["Preprocessing"]
+B["Image Preprocessing"]
 
 C["Patch Embedding"]
 
-D["Attribute Tokens"]
+D["11 Learnable Attribute Tokens"]
 
 E["Transformer Encoder"]
 
-F["Morphology Attribute Prediction"]
+F["11 Morphology Attribute Predictions"]
 
-G["Morphology-Aware WBC Head"]
+G["Morphology-Guided WBC Module"]
 
-H["WBC Analysis Output"]
+H["Final WBC Prediction"]
 
 A --> B
 B --> C
@@ -82,7 +87,7 @@ F --> G
 G --> H
 
 style A fill:#D6EAF8,stroke:#2471A3,color:#000
-style C fill:#EBDEF0,stroke:#7D3C98,color:#000
+style C fill:#E8DAEF,stroke:#6C3483,color:#000
 style E fill:#FCF3CF,stroke:#B7950B,color:#000
 style F fill:#D5F5E3,stroke:#1E8449,color:#000
 style G fill:#FADBD8,stroke:#C0392B,color:#000
@@ -91,187 +96,279 @@ style H fill:#D4EFDF,stroke:#239B56,color:#000
 
 ---
 
-## 📌 Project Goals
+# 🎯 Project Objectives
 
-- Implement the core ideas of the MAL-ViT architecture in PyTorch.
-- Understand morphology-aware representation learning.
-- Explore interpretable Vision Transformers for biomedical imaging.
-- Extend the architecture with a downstream WBC analysis head.
-- Build a complete Computer Vision training pipeline.
+- Implement the core ideas proposed in the MAL-ViT paper using PyTorch.
+- Understand how morphology attribute learning can improve representation learning.
+- Study Vision Transformers for biomedical image analysis.
+- Extend the architecture with a morphology-guided downstream prediction module.
+- Build a complete, reproducible deep learning training pipeline.
 
 ---
 
-## 📂 Project Scope
+# 📂 What's Included
 
-| Included | Status |
-|----------|--------|
+| Module | Status |
+|---------|:------:|
 | Patch Embedding | ✅ |
 | Learnable Attribute Tokens | ✅ |
 | Transformer Encoder | ✅ |
 | Morphology Attribute Heads | ✅ |
-| WBC Analysis Head | ✅ |
-| Training Pipeline | ✅ |
-| Validation & Testing | ✅ |
-| Model Checkpointing | ✅ |
+| Multi-Task Learning | ✅ |
+| Morphology-Guided WBC Module | ✅ |
+| Training & Validation Pipeline | ✅ |
+| Inference Pipeline | ✅ |
 
 ---
 
-## 📚 Resources
+# 📚 Resources
 
-### 📄 Original Paper
-
-**Morphology Attribute Learning Vision Transformer (MAL-ViT)**
-
-https://arxiv.org/pdf/2402.08070v2
-
----
-
-### 🧬 Dataset
-
-**WBCAtt Dataset**
-
-https://rose1.ntu.edu.sg/dataset/WBCAtt/
+| Resource | Link |
+|----------|------|
+| 📄 MAL-ViT Paper | https://arxiv.org/pdf/2402.08070v2 |
+| 🧬 WBCAtt Dataset | https://rose1.ntu.edu.sg/dataset/WBCAtt/ |
 
 ---
 
-## 📑 Repository Contents
+# 📑 Repository Guide
 
-- Model Architecture
-- Training Pipeline
-- Dataset
+- Architecture Overview
+- Model Components
 - Mathematical Formulation
+- Dataset
+- Training Pipeline
 - Results
-- Project Structure
-- Installation Guide
+- Repository Structure
+- Installation
 - Future Work
 - References
----
 
+---
 
 # 🏛️ Architecture Overview
 
-The implementation follows the overall design philosophy introduced in the **MAL-ViT** paper.
+This implementation follows the overall design philosophy introduced in the **MAL-ViT** paper, where learnable **morphology attribute tokens** interact with image patches throughout a Vision Transformer encoder.
 
-Instead of relying on a single **CLS token**, the model learns multiple **morphology attribute tokens** that interact with image patches throughout the Transformer encoder. These learned morphology representations are then used by an additional **WBC analysis head**, which is introduced in this project.
+Unlike a standard Vision Transformer that predicts only a final class, this model first learns **11 clinically meaningful morphology attributes** and then uses these learned representations to predict the corresponding **White Blood Cell subtype**.
+
+The downstream WBC prediction module is an extension introduced in this project.
 
 ---
 
-## 🔄 Model Workflow
+# 🔄 Model Workflow
 
 ```mermaid
 flowchart TB
 
-IMG["Input Image<br/>3×224×224"]
+IMG["Input Blood Smear Image<br/>(3 × 224 × 224)"]
 
 PATCH["Patch Embedding"]
 
-TOKEN["Patch Tokens"]
+PATCHTOKENS["Patch Tokens"]
 
-ATTR["11 Learnable<br/>Attribute Tokens"]
+ATTR["11 Learnable<br/>Morphology Attribute Tokens"]
 
-POS["Position Embedding"]
+POS["Add Positional Embeddings"]
 
-ENC["12× Transformer Encoder"]
+ENC["Transformer Encoder ×12"]
 
-HEAD["11 Attribute Heads"]
+UPDATED["Updated Attribute Tokens"]
 
-ATTR_OUT["Morphology Predictions"]
+HEADS["11 Independent Attribute Heads"]
 
-WBC["Morphology-Aware<br/>WBC Head"]
+ATTRPRED["11 Morphology Attribute Predictions"]
 
-FINAL["WBC Analysis"]
+CLS["Morphology-Guided WBC Prediction Head"]
+
+OUT["Final Outputs<br/>• 11 Morphology Attributes<br/>• Predicted WBC Subtype"]
 
 IMG --> PATCH
-PATCH --> TOKEN
-TOKEN --> POS
+PATCH --> PATCHTOKENS
+PATCHTOKENS --> POS
 ATTR --> POS
 POS --> ENC
-ENC --> HEAD
-HEAD --> ATTR_OUT
-ATTR_OUT --> WBC
-WBC --> FINAL
+ENC --> UPDATED
+UPDATED --> HEADS
+HEADS --> ATTRPRED
+ATTRPRED --> CLS
+CLS --> OUT
 
 style IMG fill:#D6EAF8,stroke:#2471A3,color:#000
 style PATCH fill:#E8DAEF,stroke:#6C3483,color:#000
 style ENC fill:#FCF3CF,stroke:#B7950B,color:#000
-style HEAD fill:#D5F5E3,stroke:#1E8449,color:#000
-style WBC fill:#FADBD8,stroke:#C0392B,color:#000
-style FINAL fill:#D4EFDF,stroke:#239B56,color:#000
+style HEADS fill:#D5F5E3,stroke:#1E8449,color:#000
+style CLS fill:#FADBD8,stroke:#C0392B,color:#000
+style OUT fill:#D4EFDF,stroke:#239B56,color:#000
 ```
 
 ---
 
-# 🧩 Model Components
+# 🧩 Architecture Components
 
-| Component | Purpose |
-|-----------|---------|
-| Patch Embedding | Converts image patches into token embeddings |
-| Attribute Tokens | Learn morphology-aware representations |
-| Position Embedding | Preserves spatial information |
-| Transformer Encoder | Learns relationships between image patches and attribute tokens |
-| Attribute Heads | Predict morphology attributes |
-| WBC Analysis Head | Uses predicted morphology for downstream WBC analysis |
+| Component | Role |
+|-----------|------|
+| **Patch Embedding** | Converts the input image into a sequence of patch embeddings. |
+| **Morphology Attribute Tokens** | Eleven learnable tokens that capture morphology-specific information throughout the Transformer encoder. |
+| **Positional Embeddings** | Preserve spatial relationships between image patches. |
+| **Transformer Encoder** | Learns contextual interactions between image patches and morphology attribute tokens. |
+| **11 Attribute Heads** | Independently predict the morphology attributes annotated in the WBCAtt dataset. |
+| **Morphology-Guided WBC Head** | Uses the learned morphology representations to predict the final WBC subtype. |
 
 ---
 
 # ⚙️ Forward Pass
 
 ```text
-Input Image
-      │
-      ▼
-Patch Embedding
-      │
-      ▼
-Patch Tokens
-      │
-      ▼
-+ Attribute Tokens
-      │
-      ▼
-Position Embedding
-      │
-      ▼
-Transformer Encoder
-      │
-      ▼
-Attribute Tokens
-      │
-      ▼
-Attribute Prediction Heads
-      │
-      ▼
-Morphology Predictions
-      │
-      ▼
-Morphology-Aware WBC Head
-      │
-      ▼
-Final WBC Analysis
+Input Blood Smear Image
+           │
+           ▼
+     Patch Embedding
+           │
+           ▼
+      Patch Tokens
+           │
+           ▼
++ 11 Morphology Attribute Tokens
+           │
+           ▼
+    Positional Embeddings
+           │
+           ▼
+  Transformer Encoder
+           │
+           ▼
+ Updated Attribute Tokens
+           │
+           ▼
+11 Attribute Prediction Heads
+           │
+           ▼
+11 Morphology Attribute Predictions
+           │
+           ▼
+Morphology-Guided WBC Head
+           │
+           ▼
+Final Outputs
+ ├── 11 Morphology Attributes
+ └── Predicted WBC Subtype
 ```
 
 ---
 
-# 📊 Training Pipeline
+# 📐 Mathematical Formulation
+
+| Stage | Formulation |
+|--------|-------------|
+| Patch Embedding | \(z_i = W_p x_i + b\) |
+| Token Construction | \(T_0 = [A;P] + E\) |
+| Multi-Head Self-Attention | \(Attention(Q,K,V)=Softmax(\frac{QK^T}{\sqrt{d}})V\) |
+| Feed Forward Network | \(MLP(x)=W_2(GELU(W_1x))\) |
+| Morphology Prediction | \(y_i=f_i(a_i)\) |
+| WBC Prediction | \(y_{wbc}=g(y_1,y_2,\ldots,y_{11})\) |
+
+---
+
+# 📊 Model Outputs
+
+From a single White Blood Cell image, the model produces two sets of predictions:
+
+| Output | Description |
+|--------|-------------|
+| **Morphology Attributes** | Predicts the **11 morphology attributes** annotated in the WBCAtt dataset. |
+| **WBC Subtype** | Uses the predicted morphology information to estimate the corresponding White Blood Cell subtype. |
+
+This two-stage prediction strategy is intended to encourage morphology-aware feature learning while providing intermediate predictions that are easier to interpret than end-to-end classification alone.
+
+---
+
+---
+
+# 📦 Dataset
+
+This implementation is trained and evaluated on the **WBCAtt** dataset, which provides both **White Blood Cell subtype labels** and **morphology attribute annotations**. This dual annotation enables the model to jointly learn interpretable morphology representations and downstream WBC recognition.
+
+| Property | Details |
+|----------|---------|
+| **Dataset** | WBCAtt |
+| **Image Type** | Peripheral Blood Smear Images |
+| **Input Size** | 224 × 224 RGB |
+| **Supervision** | 11 Morphology Attributes + WBC Subtype |
+| **Learning Strategy** | Multi-Task Learning |
+
+🔗 **Dataset**
+
+https://rose1.ntu.edu.sg/dataset/WBCAtt/
+
+---
+
+# 🧪 Data Pipeline
 
 ```mermaid
 flowchart LR
 
-A["Training Images"]
+A["WBCAtt Dataset"]
+
+B["Image Loading"]
+
+C["Data Augmentation"]
+
+D["Normalization"]
+
+E["Mini-batch Generation"]
+
+F["Training"]
+
+A --> B
+B --> C
+C --> D
+D --> E
+E --> F
+
+style A fill:#D6EAF8,stroke:#2471A3,color:#000
+style C fill:#D5F5E3,stroke:#1E8449,color:#000
+style F fill:#FADBD8,stroke:#C0392B,color:#000
+```
+
+Training images undergo augmentation to improve model generalization, while validation and test images are processed using deterministic preprocessing.
+
+Typical preprocessing includes:
+
+- Resize
+- Random Horizontal Flip
+- Random Rotation
+- Color Jitter
+- Image Normalization
+
+---
+
+# 🎯 Training Strategy
+
+The model is optimized using a **multi-task learning** objective.
+
+During each training iteration, the network simultaneously learns:
+
+- The **11 morphology attributes**
+- The **final White Blood Cell subtype**
+
+Both objectives contribute to the optimization process through a combined training loss.
+
+```mermaid
+flowchart LR
+
+A["Input Batch"]
 
 B["Forward Pass"]
 
-C["Morphology Loss"]
+C["Morphology Attribute Loss"]
 
-D["WBC Loss"]
+D["WBC Prediction Loss"]
 
 E["Combined Loss"]
 
 F["Backpropagation"]
 
-G["Optimizer"]
-
-H["Checkpoint"]
+G["Parameter Update"]
 
 A --> B
 B --> C
@@ -280,154 +377,107 @@ C --> E
 D --> E
 E --> F
 F --> G
-G --> H
 
 style A fill:#D6EAF8,stroke:#2471A3,color:#000
 style E fill:#FCF3CF,stroke:#B7950B,color:#000
-style H fill:#D5F5E3,stroke:#1E8449,color:#000
+style G fill:#D5F5E3,stroke:#1E8449,color:#000
 ```
 
 ---
 
-# 📐 Mathematical Formulation
+# ⚙️ Training Pipeline
 
-| Stage | Equation |
-|--------|----------|
-| Patch Embedding | \(z_i=W_px_i+b\) |
-| Token Construction | \(T=[A;P]+E\) |
-| Self-Attention | \(Attention(Q,K,V)=Softmax(QK^T/\sqrt d)V\) |
-| Feed Forward | \(MLP(x)=W_2(GELU(W_1x))\) |
-| Attribute Prediction | \(y_i=f_i(a_i)\) |
-| WBC Analysis | \(y=g(y_1,y_2,\ldots,y_n)\) |
+The repository provides a complete end-to-end deep learning workflow.
 
----
+| Stage | Included |
+|--------|:--------:|
+| Dataset Loading | ✅ |
+| Image Preprocessing | ✅ |
+| Data Augmentation | ✅ |
+| Forward Pass | ✅ |
+| Multi-Task Loss Computation | ✅ |
+| Backpropagation | ✅ |
+| Validation | ✅ |
+| Testing | ✅ |
+| Model Checkpointing | ✅ |
+| Inference | ✅ |
 
-# 📦 Dataset
-
-| Property | Value |
-|----------|-------|
-| Dataset | WBCAtt |
-| Domain | White Blood Cell Morphology |
-| Input | Blood Smear Images |
-| Labels | WBC Class + Morphology Attributes |
-| Task | Morphology Analysis |
-
-🔗 Dataset
-
-https://rose1.ntu.edu.sg/dataset/WBCAtt/
+The exact optimizer, scheduler, learning rate, batch size, and other hyperparameters are defined in the project configuration files.
 
 ---
 
-# 🧪 Data Pipeline
+# 📈 Implementation Checklist
 
-```text
-Dataset
-
-↓
-
-Image Loading
-
-↓
-
-Data Augmentation
-
-↓
-
-Normalization
-
-↓
-
-Mini-Batches
-
-↓
-
-Training
-```
-
----
-
-# 🚀 Training Configuration
-
-The project provides a complete training workflow including:
-
-- Image preprocessing
-- Data augmentation
-- Mini-batch loading
-- Multi-task optimization
-- Validation
-- Model checkpointing
-- Testing and inference
-
-The exact hyperparameters (learning rate, optimizer, scheduler, epochs, etc.) are defined in the project's configuration files.
-
----
-
-# 📋 Implementation Summary
-
-| Feature | Status |
-|----------|:------:|
+| Module | Status |
+|---------|:------:|
 | Patch Embedding | ✅ |
+| Positional Embeddings | ✅ |
 | Transformer Encoder | ✅ |
-| Multi-Head Self Attention | ✅ |
-| Learnable Attribute Tokens | ✅ |
-| Morphology Attribute Heads | ✅ |
-| Multi-task Learning | ✅ |
-| Morphology-Aware WBC Head | ✅ |
-| End-to-End Training Pipeline | ✅ |
+| Multi-Head Self-Attention | ✅ |
+| Learnable Morphology Attribute Tokens | ✅ |
+| 11 Attribute Prediction Heads | ✅ |
+| Morphology-Guided WBC Prediction Head | ✅ |
+| Multi-Task Learning | ✅ |
+| Training & Evaluation Pipeline | ✅ |
+| Inference Pipeline | ✅ |
 
 ---
 
-# 📖 Relation to the Original MAL-ViT Paper
+# 📄 Relation to the MAL-ViT Paper
 
-| Original MAL-ViT | This Repository |
-|------------------|-----------------|
-| Morphology Attribute Tokens | ✅ Implemented |
-| Shared Transformer Encoder | ✅ Implemented |
-| Independent Attribute Heads | ✅ Implemented |
+| Component | This Implementation |
+|-----------|:-------------------:|
+| Patch Embedding | ✅ |
+| Morphology Attribute Tokens | ✅ |
+| Transformer Encoder | ✅ |
+| Independent Attribute Heads | ✅ |
+| Multi-Task Learning | ✅ |
 | Educational PyTorch Implementation | ✅ |
-| Additional Morphology-Aware WBC Head | ✅ Extension in this project |
+| Morphology-Guided WBC Prediction Module | ⭐ Project Extension |
 
 > **Transparency**
 >
-> This repository should be viewed as an educational implementation inspired by the MAL-ViT paper. While it follows the paper's overall architectural ideas, some implementation details may differ, and the additional WBC analysis head is an extension introduced specifically for this project.
+> This repository is an independent educational implementation inspired by the MAL-ViT paper. It follows the paper's overall architectural concepts while introducing an additional downstream morphology-guided WBC prediction module. It should not be considered an official reproduction of the original work.
 
 ---
 
 # 📊 Results
 
-The primary goal of this project was to understand, implement, and extend the core ideas behind the **MAL-ViT** architecture for White Blood Cell morphology analysis.
+The primary objective of this project was to understand, implement, and extend the core ideas of the **MAL-ViT** architecture for morphology-aware White Blood Cell analysis.
 
-The repository includes a complete pipeline for:
+The repository provides a complete workflow from data preprocessing to inference while jointly predicting morphology attributes and WBC subtype.
 
-| Module | Status |
-|---------|:------:|
+| Capability | Status |
+|------------|:------:|
 | Model Training | ✅ |
 | Validation | ✅ |
 | Testing | ✅ |
 | Checkpoint Saving | ✅ |
-| Metric Logging | ✅ |
 | Inference | ✅ |
+| Performance Logging | ✅ |
 
-> **Note:** Results obtained from this implementation should not be interpreted as a direct reproduction of the original MAL-ViT paper, since implementation details and the downstream WBC analysis module differ.
+> **Note**
+>
+> The reported results correspond to this implementation and training configuration. They should not be interpreted as a direct benchmark or reproduction of the original MAL-ViT paper.
 
 ---
 
 # 📁 Repository Structure
 
 ```text
-WBC-MAL-ViT/
+WBC-Morphology-Analysis/
 │
-├── config.py
-├── train.py
-├── test.py
-├── inference.py
-│
+├── configs/
 ├── data/
 ├── models/
 ├── training/
 ├── utils/
 ├── outputs/
-├── notebooks/
+│
+├── train.py
+├── test.py
+├── inference.py
+├── requirements.txt
 └── README.md
 ```
 
@@ -435,51 +485,37 @@ WBC-MAL-ViT/
 
 # 🚀 Getting Started
 
-## 1. Clone the Repository
+## Clone the Repository
 
 ```bash
-git clone https://github.com/<your-username>/<repo-name>.git
+git clone https://github.com/<username>/<repository>.git
 
-cd <repo-name>
+cd <repository>
 ```
 
----
-
-## 2. Install Dependencies
+## Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
----
+## Download Dataset
 
-## 3. Download the Dataset
+Download the **WBCAtt** dataset and update the dataset path in the project configuration.
 
-Download the **WBCAtt** dataset from:
-
-🔗 https://rose1.ntu.edu.sg/dataset/WBCAtt/
-
-Update the dataset path in `config.py`.
-
----
-
-## 4. Train
+## Train
 
 ```bash
 python train.py
 ```
 
----
-
-## 5. Evaluate
+## Evaluate
 
 ```bash
 python test.py
 ```
 
----
-
-## 6. Run Inference
+## Inference
 
 ```bash
 python inference.py --image path/to/image.jpg
@@ -487,84 +523,64 @@ python inference.py --image path/to/image.jpg
 
 ---
 
-# 💡 Skills Demonstrated
+# 💻 Skills Demonstrated
 
-| Area | Technologies / Concepts |
-|------|--------------------------|
-| Deep Learning | PyTorch |
-| Computer Vision | Vision Transformers (ViT) |
-| Medical Imaging | WBC Morphology Analysis |
-| Model Design | Transformer Encoder, Attribute Tokens |
-| Training | Multi-task Learning |
-| Engineering | Modular PyTorch Project Structure |
-| AI | Explainable AI (XAI) Fundamentals |
-
----
-
-# ⚖️ Limitations
-
-This repository is intended as an educational implementation.
-
-Some important considerations:
-
-- It is **inspired by** the MAL-ViT paper rather than an official reproduction.
-- Some implementation details may differ from the original publication.
-- The morphology-aware WBC analysis head is an extension introduced in this project.
-- Performance depends on the chosen training configuration and dataset split.
+| Area | Skills |
+|------|--------|
+| Deep Learning | PyTorch, Neural Network Training |
+| Computer Vision | Vision Transformers, Image Representation Learning |
+| Medical AI | WBC Morphology Analysis |
+| Transformer Design | Patch Embedding, Self-Attention, Encoder Blocks |
+| Multi-task Learning | Joint Attribute & WBC Prediction |
+| Software Engineering | Modular Project Design, Training Pipeline |
+| Explainability | Morphology Attribute Learning |
 
 ---
 
-# 🔮 Future Work
+# ⚠️ Limitations
 
-Potential improvements include:
+This repository aims to faithfully implement the main ideas presented in the MAL-ViT paper while remaining transparent about its scope.
 
-- 🎯 Grad-CAM visualization
-- 🎯 Attention Rollout
-- 🎯 Hyperparameter optimization
-- 🎯 External dataset evaluation
-- 🎯 Ablation studies
-- 🎯 Comparison with pretrained ViTs
-- 🎯 Clinical interpretation of morphology attributes
+Current limitations include:
+
+- It is an independent implementation inspired by the MAL-ViT paper rather than an official reproduction.
+- Some implementation details may differ from those described in the publication.
+- The downstream morphology-guided WBC prediction module is an extension introduced in this project.
+- Additional validation on external datasets has not yet been performed.
+- Further explainability studies (e.g., Grad-CAM or Attention Rollout) can strengthen model interpretation.
+
+---
+
+# 🔬 Future Work
+
+Possible future directions include:
+
+- Grad-CAM visual explanations
+- Attention Rollout visualization
+- Ablation studies on attribute learning
+- Evaluation on additional hematology datasets
+- Comparison with pretrained Vision Transformers
+- Hyperparameter optimization
+- Self-supervised pretraining
+- Clinical interpretation of learned morphology attributes
 
 ---
 
 # 📚 References
 
-## 📄 MAL-ViT Paper
-
-**Morphology Attribute Learning Vision Transformer (MAL-ViT)**
-
-**Paper**
-
-https://arxiv.org/pdf/2402.08070v2
-
----
-
-## 🧬 WBCAtt Dataset
-
-**White Blood Cell Morphology Dataset**
-
-https://rose1.ntu.edu.sg/dataset/WBCAtt/
-
----
-
-## 📖 Vision Transformer
-
-Dosovitskiy et al.
-
-**An Image is Worth 16×16 Words: Transformers for Image Recognition at Scale**
-
-ICLR 2021
-
-https://arxiv.org/abs/2010.11929
+| Resource | Link |
+|----------|------|
+| **MAL-ViT Paper** | https://arxiv.org/pdf/2402.08070v2 |
+| **WBCAtt Dataset** | https://rose1.ntu.edu.sg/dataset/WBCAtt/ |
+| **Vision Transformer (ViT)** | https://arxiv.org/abs/2010.11929 |
 
 ---
 
 # 🙏 Acknowledgements
 
-This project was inspired by the **MAL-ViT** architecture proposed by its original authors.
+This work was inspired by the **Morphology Attribute Learning Vision Transformer (MAL-ViT)** framework and the publicly available **WBCAtt** dataset.
 
-Special thanks to the creators of the **WBCAtt** dataset for providing publicly available White Blood Cell morphology annotations that make educational implementations and research possible.
+I would like to thank the authors of the MAL-ViT paper and the creators of the WBCAtt dataset for enabling further exploration of interpretable AI techniques for hematology image analysis.
 
 ---
 
@@ -572,31 +588,24 @@ Special thanks to the creators of the **WBCAtt** dataset for providing publicly 
 
 ## Muhammad Fassi Ur Rehman
 
-**BS Artificial Intelligence**
-
+**BS Artificial Intelligence**  
 COMSATS University Islamabad
 
-### Interests
+### Research Interests
 
-- 🤖 Artificial Intelligence
-- 👁️ Computer Vision
-- 🧬 Medical Image Analysis
-- 🔍 Explainable AI (XAI)
-- 🧠 Vision Transformers
-- ❤️ AI for Healthcare
-
----
-
-## ⭐ If You Find This Repository Useful
-
-If this project helps your learning or research, consider giving it a ⭐.
-
-Feedback, suggestions, and discussions are always welcome.
+- Computer Vision
+- Medical Image Analysis
+- Vision Transformers
+- Explainable AI (XAI)
+- Deep Learning
+- AI for Healthcare
 
 ---
 
-<p align="center">
+<div align="center">
 
-<b>Learning • Implementing • Exploring Explainable Computer Vision for Medical Imaging</b>
+### ⭐ If you found this repository useful, consider giving it a star.
 
-</p>
+I welcome feedback, suggestions, and discussions related to medical computer vision, Vision Transformers, and morphology-aware learning.
+
+</div>
