@@ -1,7 +1,7 @@
 """
 smoke_test.py
 
-End-to-end integration test for Explainable WBC Classification.
+End-to-end integration test 
 
 This script verifies the complete training pipeline:
 
@@ -12,8 +12,7 @@ Dataset
 → Backward
 → Optimizer
 
-Author:
-Muhammad Fassi Ur Rehman
+
 """
 
 import torch

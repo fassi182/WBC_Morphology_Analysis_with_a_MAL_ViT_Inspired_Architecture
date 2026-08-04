@@ -5,8 +5,7 @@ Independent attribute classification heads for MAL-ViT.
 
 Each attribute token is passed to its own classification head.
 
-Author: Muhammad Fassi Ur Rehman
-Project: Explainable White Blood Cell Morphology Analysis using MAL-ViT
+
 """
 
 import torch

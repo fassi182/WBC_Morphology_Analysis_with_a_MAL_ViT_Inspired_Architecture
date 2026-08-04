@@ -1,12 +1,10 @@
 """
 logger.py
 
-Training logger for MAL-ViT.
+Training logger 
 
 Logs training and validation metrics after each epoch.
 
-Author:
-Muhammad Fassi Ur Rehman
 """
 
 import csv

@@ -1,13 +1,11 @@
 """
 validate.py
 
-Validation loop for Explainable WBC Classification using MAL-ViT.
+Validation loop 
 
 This module evaluates the model on the validation dataset without
 updating the model parameters.
 
-Author:
-Muhammad Fassi Ur Rehman
 """
 
 from tqdm import tqdm

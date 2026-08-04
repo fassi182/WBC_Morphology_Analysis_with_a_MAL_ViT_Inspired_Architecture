@@ -1,13 +1,10 @@
 """
 config.py
 
-Central configuration file for the MAL-ViT project.
-
+Central configuration file for 
 Every module in the project should import configuration values
 from this file.
 
-Author: Muhammad Fassi Ur Rehman
-Project: Explainable White Blood Cell Morphology Analysis using MAL-ViT
 """
 
 from pathlib import Path

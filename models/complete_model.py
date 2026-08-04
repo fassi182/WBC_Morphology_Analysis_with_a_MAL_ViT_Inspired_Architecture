@@ -20,8 +20,6 @@ WBC Classifier
     ↓
 8 WBC Classes
 
-Author:
-Muhammad Fassi Ur Rehman
 """
 
 import torch

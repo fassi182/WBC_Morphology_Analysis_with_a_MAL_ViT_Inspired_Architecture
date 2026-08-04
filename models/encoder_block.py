@@ -21,8 +21,6 @@ Residual Add
     │
 Output
 
-Author: Muhammad Fassi Ur Rehman
-Project: Explainable White Blood Cell Morphology Analysis using MAL-ViT
 """
 
 import torch

@@ -6,8 +6,7 @@ Predicts the WBC subtype from the morphology attribute logits.
 This is our research extension and is NOT part of the original
 MAL-ViT paper.
 
-Author: Muhammad Fassi Ur Rehman
-Project: Explainable White Blood Cell Morphology Analysis using MAL-ViT
+
 """
 
 import torch

@@ -1,8 +1,7 @@
 """
 inference.py
 
-Inference script for Explainable WBC Classification
-using MAL-ViT.
+Inference script 
 
 Pipeline
 --------
@@ -14,8 +13,6 @@ MAL-ViT
     ↓
 WBC Prediction
 
-Author:
-Muhammad Fassi Ur Rehman
 """
 
 from pathlib import Path

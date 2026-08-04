@@ -1,12 +1,11 @@
 """
 early_stopping.py
 
-Early stopping utility for MAL-ViT.
+Early stopping utility 
 
 Stops training when validation loss does not improve.
 
-Author:
-Muhammad Fassi Ur Rehman
+
 """
 
 import torch

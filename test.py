@@ -4,8 +4,6 @@ test.py
 Evaluate the trained Explainable WBC Classification model
 on the test dataset.
 
-Author:
-Muhammad Fassi Ur Rehman
 """
 
 import torch

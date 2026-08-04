@@ -3,8 +3,6 @@ checkpoint.py
 
 Utilities for saving and loading training checkpoints.
 
-Author:
-Muhammad Fassi Ur Rehman
 """
 
 from pathlib import Path

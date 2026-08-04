@@ -1,7 +1,7 @@
 """
 losses.py
 
-Loss functions for Explainable WBC Classification using MAL-ViT.
+Loss functions 
 
 Computes
 
@@ -9,8 +9,6 @@ Computes
 2. WBC Classification Loss
 3. Combined Multi-Task Loss
 
-Author:
-Muhammad Fassi Ur Rehman
 """
 
 import torch

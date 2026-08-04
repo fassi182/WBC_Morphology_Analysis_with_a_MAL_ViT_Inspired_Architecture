@@ -1,11 +1,9 @@
 """
 train.py
 
-Entry point for training Explainable WBC Classification
-using MAL-ViT.
+Entry point for training 
 
-Author:
-Muhammad Fassi Ur Rehman
+
 """
 
 import random

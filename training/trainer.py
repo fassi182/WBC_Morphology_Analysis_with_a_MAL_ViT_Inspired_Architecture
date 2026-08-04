@@ -1,7 +1,7 @@
 """
 trainer.py
 
-Trainer class for Explainable WBC Classification using MAL-ViT.
+Trainer class 
 
 Responsibilities
 ----------------
@@ -13,8 +13,7 @@ Responsibilities
 6. Save best model
 7. Resume training
 
-Author:
-Muhammad Fassi Ur Rehman
+
 """
 
 from pathlib import Path

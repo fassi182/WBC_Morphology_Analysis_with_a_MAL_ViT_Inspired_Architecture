@@ -8,8 +8,7 @@ This module defines image transformations for:
 2. Validation
 3. Testing
 
-Author: Muhammad Fassi Ur Rehman
-Project: Explainable White Blood Cell Morphology Analysis using MAL-ViT
+
 """
 
 from torchvision import transforms

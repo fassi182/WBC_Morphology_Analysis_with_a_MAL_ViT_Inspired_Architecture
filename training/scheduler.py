@@ -1,15 +1,11 @@
 """
 scheduler.py
 
-Learning Rate Scheduler for MAL-ViT.
+Learning Rate Scheduler 
 
 Uses Cosine Annealing Learning Rate scheduling, which is commonly
 used for Vision Transformer training.
 
-Author:
-Muhammad Fassi Ur Rehman
-Project:
-Explainable White Blood Cell Morphology Analysis using MAL-ViT
 """
 
 import torch

@@ -3,8 +3,7 @@ train_one_epoch.py
 
 Train the model for one epoch.
 
-Author:
-Muhammad Fassi Ur Rehman
+
 """
 
 from tqdm import tqdm

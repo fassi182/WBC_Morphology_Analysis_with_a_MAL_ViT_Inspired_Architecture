@@ -9,8 +9,7 @@ Input:
 Output:
     (B, N, D)
 
-Author: Muhammad Fassi Ur Rehman
-Project: Explainable White Blood Cell Morphology Analysis using MAL-ViT
+
 """
 
 import torch

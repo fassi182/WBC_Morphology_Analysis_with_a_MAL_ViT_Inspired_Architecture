@@ -1,7 +1,7 @@
 """
 metrics.py
 
-Evaluation metrics for Explainable WBC Classification using MAL-ViT.
+Evaluation metrics for
 
 This module computes:
 
@@ -10,8 +10,7 @@ This module computes:
 3. Confusion Matrix
 4. Classification Report
 
-Author:
-Muhammad Fassi Ur Rehman
+
 """
 
 import numpy as np

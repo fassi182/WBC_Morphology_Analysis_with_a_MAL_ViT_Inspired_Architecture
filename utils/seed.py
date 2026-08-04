@@ -9,8 +9,7 @@ This module sets random seeds for:
 - PyTorch
 - CUDA
 
-Author: Muhammad Fassi Ur Rehman
-Project: Explainable White Blood Cell Morphology Analysis using MAL-ViT
+
 """
 
 import random

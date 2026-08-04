@@ -23,7 +23,7 @@ Attribute Heads
     │
 Attribute Predictions
 
-Author: Muhammad Fassi Ur Rehman
+
 """
 
 import torch

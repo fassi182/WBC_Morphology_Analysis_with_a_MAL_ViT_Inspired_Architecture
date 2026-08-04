@@ -10,8 +10,7 @@ For the WBCAtt dataset:
 11 morphology attributes
 → 11 learnable attribute tokens.
 
-Author: Muhammad Fassi Ur Rehman
-Project: Explainable White Blood Cell Morphology Analysis using MAL-ViT
+
 """
 
 import torch

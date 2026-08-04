@@ -6,8 +6,7 @@ Label encoders for the WBCAtt dataset.
 This module contains mappings from categorical labels to integer IDs
 used throughout the project for training, evaluation, and inference.
 
-Author: Muhammad Fassi Ur Rehman
-Project: Explainable White Blood Cell Morphology Analysis using MAL-ViT
+
 """
 
 # ==========================================================

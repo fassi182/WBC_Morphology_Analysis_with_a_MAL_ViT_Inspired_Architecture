@@ -10,8 +10,7 @@ Responsibilities:
 - Encode WBC subtype labels
 - Encode morphology attribute labels
 
-Author: Muhammad Fassi Ur Rehman
-Project: Explainable White Blood Cell Morphology Analysis using MAL-ViT
+
 """
 
 import os

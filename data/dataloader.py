@@ -3,8 +3,7 @@ dataloader.py
 
 Creates PyTorch DataLoaders for the WBCAtt dataset.
 
-Author: Muhammad Fassi Ur Rehman
-Project: Explainable White Blood Cell Morphology Analysis using MAL-ViT
+
 """
 
 from torch.utils.data import DataLoader
