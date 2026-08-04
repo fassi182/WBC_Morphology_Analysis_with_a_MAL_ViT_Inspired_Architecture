@@ -111,14 +111,37 @@ PIN_MEMORY = torch.cuda.is_available()
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-NUM_EPOCHS = 100
+NUM_EPOCHS = 50
 
 LEARNING_RATE = 1e-4
 
 WEIGHT_DECAY = 1e-4
 
 RANDOM_SEED = 42
+# ==========================================================
+# Loss Weights
+# ==========================================================
 
+ATTRIBUTE_LOSS_WEIGHT = 0.5
+WBC_LOSS_WEIGHT = 1.0
+
+# ==========================================================
+# Learning Rate Scheduler
+# ==========================================================
+
+SCHEDULER_FACTOR = 0.5
+
+SCHEDULER_PATIENCE = 5
+
+MIN_LEARNING_RATE = 1e-6
+
+# ==========================================================
+# Checkpoint Names
+# ==========================================================
+
+BEST_MODEL_NAME = "best_model.pth"
+
+LAST_CHECKPOINT_NAME = "last_checkpoint.pth"
 # ==========================================================
 # ViT-Tiny Backbone (Paper Configuration)
 # ==========================================================

@@ -3,138 +3,90 @@ checkpoint.py
 
 Utilities for saving and loading training checkpoints.
 
-A checkpoint stores:
-- Model weights
-- Optimizer state
-- Current epoch
-- Best validation accuracy
-- Training history
-
-Author: Muhammad Fassi Ur Rehman
-Project: Explainable White Blood Cell Morphology Analysis using MAL-ViT
+Author:
+Muhammad Fassi Ur Rehman
 """
 
 from pathlib import Path
 import torch
 
-from config import MODEL_DIR
+from config import CHECKPOINT_DIR
 
+
+# ==========================================================
+# Save Checkpoint
+# ==========================================================
 
 def save_checkpoint(
-    model,
-    optimizer,
-    epoch: int,
-    best_accuracy: float,
-    history: dict,
-    filename: str = "checkpoint.pth",
+    checkpoint: dict,
+    save_path,
 ):
     """
-    Save a training checkpoint.
+    Save checkpoint dictionary.
 
     Parameters
     ----------
-    model : nn.Module
-        Model to save.
+    checkpoint : dict
+        Complete training state.
 
-    optimizer : torch.optim.Optimizer
-        Optimizer.
-
-    epoch : int
-        Current epoch.
-
-    best_accuracy : float
-        Best validation accuracy achieved so far.
-
-    history : dict
-        Training history.
-
-    filename : str
-        Output checkpoint filename.
+    save_path : Path
+        Output checkpoint path.
     """
 
-    checkpoint_path = MODEL_DIR / filename
+    save_path = Path(save_path)
 
-    checkpoint = {
-        "epoch": epoch,
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-        "best_accuracy": best_accuracy,
-        "history": history,
-    }
+    save_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
-    torch.save(checkpoint, checkpoint_path)
+    torch.save(
+        checkpoint,
+        save_path,
+    )
 
     print("=" * 60)
     print("Checkpoint Saved")
     print("=" * 60)
-    print(f"Path : {checkpoint_path}")
+    print(f"Path : {save_path}")
 
 
-def load_checkpoint(
-    model,
-    optimizer=None,
-    filename: str = "checkpoint.pth",
-    device: str = "cpu",
-):
+# ==========================================================
+# Load Checkpoint
+# ==========================================================
+
+def load_checkpoint(load_path):
     """
-    Load a training checkpoint.
+    Load checkpoint dictionary.
 
     Parameters
     ----------
-    model : nn.Module
-        Model.
-
-    optimizer : Optimizer, optional
-        Optimizer to restore.
-
-    filename : str
-        Checkpoint filename.
-
-    device : str
-        cpu or cuda.
+    load_path : Path
 
     Returns
     -------
-    model
-    optimizer
-    epoch
-    best_accuracy
-    history
+    dict
     """
 
-    checkpoint_path = MODEL_DIR / filename
+    load_path = Path(load_path)
 
-    if not checkpoint_path.exists():
+    if not load_path.exists():
+
         raise FileNotFoundError(
-            f"Checkpoint not found:\n{checkpoint_path}"
+            f"Checkpoint not found:\n{load_path}"
         )
 
     checkpoint = torch.load(
-        checkpoint_path,
-        map_location=device,
+        load_path,
+        map_location="cpu",
     )
-
-    model.load_state_dict(
-        checkpoint["model_state_dict"]
-    )
-
-    if optimizer is not None:
-        optimizer.load_state_dict(
-            checkpoint["optimizer_state_dict"]
-        )
 
     print("=" * 60)
     print("Checkpoint Loaded")
     print("=" * 60)
-    print(f"Path : {checkpoint_path}")
+    print(f"Path : {load_path}")
 
-    return (
-        model,
-        optimizer,
-        checkpoint["epoch"],
-        checkpoint["best_accuracy"],
-        checkpoint["history"],
-    )
+    return checkpoint
 
 
 # ==========================================================
@@ -143,45 +95,39 @@ def load_checkpoint(
 
 if __name__ == "__main__":
 
-    import torch.optim as optim
+    checkpoint = {
 
-    from models.complete_model import ExplainableWBCModel
+        "epoch": 10,
 
-    model = ExplainableWBCModel()
+        "best_loss": 0.73,
 
-    optimizer = optim.AdamW(
-        model.parameters(),
-        lr=1e-4,
-    )
+        "history": {
 
-    history = {
-        "train_loss": [],
-        "val_loss": [],
-        "val_accuracy": [],
+            "train_loss": [1.2, 0.9],
+
+            "val_loss": [1.0, 0.8],
+
+        },
+
     }
 
+    path = CHECKPOINT_DIR / "test_checkpoint.pth"
+
     save_checkpoint(
-        model=model,
-        optimizer=optimizer,
-        epoch=0,
-        best_accuracy=0.0,
-        history=history,
-        filename="test_checkpoint.pth",
+        checkpoint,
+        path,
     )
 
-    (
-        model,
-        optimizer,
-        epoch,
-        best_accuracy,
-        history,
-    ) = load_checkpoint(
-        model,
-        optimizer,
-        filename="test_checkpoint.pth",
-    )
+    loaded = load_checkpoint(path)
 
-    print("\nLoaded Values")
-    print(f"Epoch          : {epoch}")
-    print(f"Best Accuracy  : {best_accuracy}")
-    print(f"History Keys   : {list(history.keys())}")
+    print("\nLoaded Keys")
+
+    print(loaded.keys())
+
+    print("\nEpoch")
+
+    print(loaded["epoch"])
+
+    print("\nBest Loss")
+
+    print(loaded["best_loss"])

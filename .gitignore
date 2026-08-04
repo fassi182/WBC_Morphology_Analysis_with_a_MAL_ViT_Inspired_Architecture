@@ -1,24 +1,21 @@
 # Python
 __pycache__/
-*.py[cod]
-*.pyo
+*.pyc
 
-# Virtual Environments
+# Virtual environment
 venv/
-.venv/
-env/
+.env
+
+# Outputs
+outputs/checkpoints/
+outputs/logs/
+outputs/plots/
+
+# Dataset
+datasets/
 
 # VS Code
 .vscode/
-
-# PyTorch
-*.pth
-
-# Training outputs
-outputs/
-
-# Dataset
-datasets/WBCAtt/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -26,6 +23,3 @@ datasets/WBCAtt/
 # OS
 .DS_Store
 Thumbs.db
-
-# Logs
-*.log
