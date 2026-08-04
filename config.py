@@ -111,7 +111,7 @@ PIN_MEMORY = True
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-NUM_EPOCHS = 50
+NUM_EPOCHS = 10
 
 LEARNING_RATE = 1e-4
 
