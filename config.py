@@ -12,7 +12,7 @@ Project: Explainable White Blood Cell Morphology Analysis using MAL-ViT
 
 from pathlib import Path
 import torch
-
+torch.backends.cudnn.benchmark = True
 # ==========================================================
 # Project Paths
 # ==========================================================
@@ -99,11 +99,11 @@ ATTRIBUTE_CLASSES = {
 # DataLoader
 # ==========================================================
 
-BATCH_SIZE = 32
+BATCH_SIZE = 16
 
-NUM_WORKERS = 0
+NUM_WORKERS = 4
 
-PIN_MEMORY = torch.cuda.is_available()
+PIN_MEMORY = True
 
 # ==========================================================
 # Training
