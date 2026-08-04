@@ -6,7 +6,7 @@
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.2+-EE4C2C?logo=pytorch&logoColor=white)
 ![Vision Transformer](https://img.shields.io/badge/Backbone-ViT-blueviolet)
 ![Medical AI](https://img.shields.io/badge/Domain-Biomedical%20AI-success)
-![License](https://img.shields.io/badge/License-MIT-lightgrey)
+
 
 </p>
 
@@ -16,15 +16,11 @@
 
 # 📖 Overview
 
-White Blood Cell (WBC) morphology plays an important role in hematological diagnosis, as morphological characteristics often provide clinically relevant information beyond the final cell subtype alone.
+WBC morphology carries clinically relevant information beyond the final cell subtype alone. Inspired by the **Morphology Attribute Learning Vision Transformer (MAL-ViT)**, this project adopts a **morphology-first learning strategy**: the model first predicts **11 clinically meaningful morphology attributes** from a blood smear image, then a **Morphology-Guided WBC Prediction Head** uses those intermediate predictions to infer the WBC subtype.
 
-Inspired by the **Morphology Attribute Learning Vision Transformer (MAL-ViT)**, this project adopts a **morphology-first learning strategy** in which the model first predicts **11 clinically meaningful morphology attributes** from a blood smear image. These intermediate morphology attribute predictions are then used by a **Morphology-Guided WBC Prediction Head** to predict the corresponding WBC subtype.
+Implemented from scratch in **PyTorch** with a modular pipeline (dataset prep, training, evaluation, checkpointing, inference), this repository is an educational implementation for understanding morphology-aware Vision Transformers and a foundation for further research.
 
-The project is implemented from scratch in **PyTorch** with a modular architecture that includes dataset preparation, model training, evaluation, checkpointing, and inference. It is designed as an educational implementation for understanding morphology-aware Vision Transformers while providing a solid foundation for future research and experimentation.
-
-> **Implementation Note**
->
-> This repository is an independent educational implementation inspired by the MAL-ViT paper. It follows the paper's overall design philosophy but is **not an official reproduction**, and some implementation details may differ from those described in the original publication.
+> **Implementation Note** — This is an independent educational implementation inspired by the MAL-ViT paper. It follows the paper's design philosophy but is **not an official reproduction**; some implementation details may differ.
 
 ---
 
@@ -41,6 +37,8 @@ The project is implemented from scratch in **PyTorch** with a modular architectu
 | ➕ Project Extension | Morphology-Guided WBC Prediction Head |
 | 🧪 Dataset | WBCAtt |
 | ⚙️ Framework | PyTorch |
+---
+
 
 # ✨ Key Features
 
@@ -48,12 +46,12 @@ The project is implemented from scratch in **PyTorch** with a modular architectu
 |---------|-------------|
 | 🧬 **Morphology-First Learning** | Predicts 11 clinically meaningful morphology attributes before inferring the final WBC subtype. |
 | 🧠 **ViT-Inspired Architecture** | Implements the core design principles of MAL-ViT using a Vision Transformer backbone built in PyTorch. |
-| 🏷️ **Learnable Morphology Attribute Tokens** | Uses dedicated attribute tokens that interact with image patches to learn morphology-aware representations. |
-| 🎯 **Joint Multi-Task Learning** | Simultaneously optimizes morphology attribute prediction and WBC subtype prediction within a unified training framework. |
-| ➕ **Morphology-Guided WBC Prediction Head** | Extends the original MAL-ViT architecture with a downstream prediction head that utilizes morphology attribute predictions to infer the final WBC subtype. |
-| 🏗️ **Modular PyTorch Implementation** | Organized into reusable modules for patch embedding, attention, transformer blocks, prediction heads, training, and inference. |
-| 📈 **End-to-End Training Pipeline** | Includes data preprocessing, augmentation, training, validation, testing, checkpointing, metric logging, and inference. |
-| 🔬 **Research-Oriented Design** | Built to facilitate experimentation with morphology-aware representation learning, Vision Transformers, and medical image analysis. |
+| 🏷️ **Learnable Morphology Attribute Tokens** | Dedicated attribute tokens interact with image patches to learn morphology-aware representations. |
+| 🎯 **Joint Multi-Task Learning** | Simultaneously optimizes morphology attribute prediction and WBC subtype prediction. |
+| ➕ **Morphology-Guided WBC Prediction Head** | Project extension that uses morphology attribute predictions to infer the final WBC subtype. |
+| 🏗️ **Modular PyTorch Implementation** | Reusable modules for patch embedding, attention, transformer blocks, prediction heads, training, and inference. |
+| 📈 **End-to-End Training Pipeline** | Data preprocessing, augmentation, training, validation, testing, checkpointing, metric logging, and inference. |
+| 🔬 **Research-Oriented Design** | Built for experimentation with morphology-aware representation learning and medical image analysis. |
 
 ---
 
@@ -63,19 +61,12 @@ The project is implemented from scratch in **PyTorch** with a modular architectu
 flowchart LR
 
 A["Blood Smear Image"]
-
 B["Image Preprocessing"]
-
 C["Patch Embedding"]
-
 D["11 Learnable<br/>Morphology Attribute Tokens"]
-
 E["Transformer Encoder"]
-
 F["11 Morphology Attribute Predictions"]
-
 G["Morphology-Guided<br/>WBC Prediction Head"]
-
 H["Predicted WBC Subtype"]
 
 A --> B
@@ -136,22 +127,25 @@ style H fill:#D4EFDF,stroke:#239B56,color:#000
 - Model Workflow
 - Architecture Components
 - Forward Pass
-- Mathematical Formulation
 - Dataset
+- Data Pipeline
 - Training Strategy
+- Training Pipeline
+- Implementation Checklist
+- Relation to the MAL-ViT Paper
 - Results
 - Repository Structure
-- Installation Guide
+- Getting Started
+- Skills Demonstrated
+- Limitations
 - Future Work
 - References
 
+---
+
 # 🏛️ Architecture Overview
 
-The architecture follows the design philosophy of the **Morphology Attribute Learning Vision Transformer (MAL-ViT)** by replacing the conventional classification token with **11 learnable morphology attribute tokens**. These tokens interact with image patch tokens throughout the Transformer encoder to learn attribute-specific representations.
-
-Instead of directly predicting a cell subtype from global image features, the network first generates **11 Morphology Attribute Predictions**. These intermediate predictions are then passed to a **Morphology-Guided WBC Prediction Head**, introduced as an extension in this project, to infer the **Predicted WBC Subtype**.
-
-This two-stage design encourages morphology-aware representation learning while providing interpretable intermediate predictions that bridge image features and the final subtype prediction.
+The architecture follows the **MAL-ViT** design philosophy by replacing the conventional classification token with **11 learnable morphology attribute tokens**. The network first produces **11 Morphology Attribute Predictions**, which the **Morphology-Guided WBC Prediction Head**—introduced in this project—uses to produce the **Predicted WBC Subtype**. This two-stage design enables morphology-aware learning with interpretable intermediate predictions.
 
 ---
 
@@ -161,25 +155,15 @@ This two-stage design encourages morphology-aware representation learning while 
 flowchart TB
 
 IMG["Input Blood Smear Image<br/>(3 × 224 × 224)"]
-
 PATCH["Patch Embedding"]
-
 PATCHTOKENS["Patch Tokens"]
-
 ATTR["11 Learnable<br/>Morphology Attribute Tokens"]
-
 POS["Add Positional Embeddings"]
-
 ENC["Transformer Encoder ×12"]
-
 UPDATED["Updated Morphology Attribute Tokens"]
-
 HEADS["11 Independent Attribute Heads"]
-
 ATTRPRED["11 Morphology Attribute Predictions"]
-
 WBCHEAD["Morphology-Guided<br/>WBC Prediction Head"]
-
 OUT["Predicted WBC Subtype"]
 
 IMG --> PATCH
@@ -256,267 +240,6 @@ Predicted WBC Subtype
 
 # 📦 Dataset
 
-This implementation is developed using the **WBCAtt** dataset, a publicly available White Blood Cell morphology dataset containing both **WBC subtype labels** and **11 morphology attribute annotations**.
-
-Unlike conventional WBC classification datasets that provide only a cell label, WBCAtt enables the model to learn **clinically meaningful morphology attributes** alongside **WBC subtype prediction** within a unified multi-task learning framework.
-
-| Property | Details |
-|----------|---------|
-| **Dataset** | WBCAtt |
-| **Image Type** | Peripheral Blood Smear Images |
-| **Input Resolution** | 224 × 224 RGB |
-| **Intermediate Supervision** | 11 Morphology Attribute Labels |
-| **Final Supervision** | WBC Subtype Labels |
-| **Overall Task** | Joint Morphology Attribute Prediction and WBC Subtype Prediction |
-
-### Dataset Resource
-
-https://rose1.ntu.edu.sg/dataset/WBCAtt/
-
----
-
-# 🧪 Data Pipeline
-
-The data processing pipeline prepares blood smear images before they are passed to the Vision Transformer.
-
-```mermaid
-flowchart LR
-
-A["WBCAtt Dataset"]
-
-B["Image Loading"]
-
-C["Data Augmentation"]
-
-D["Normalization"]
-
-E["Mini-batch Generation"]
-
-F["Model Training"]
-
-A --> B
-B --> C
-C --> D
-D --> E
-E --> F
-
-style A fill:#D6EAF8,stroke:#2471A3,color:#000
-style C fill:#D5F5E3,stroke:#1E8449,color:#000
-style F fill:#FADBD8,stroke:#C0392B,color:#000
-```
-
-### Training Preprocessing
-
-Training images undergo data augmentation to improve model robustness and generalization.
-
-Typical augmentations include:
-
-- Resize
-- Random Horizontal Flip
-- Random Rotation
-- Color Jitter
-- Image Normalization
-
-Validation and test images use deterministic preprocessing without random augmentation.
-
----
-
-# 🎯 Training Strategy
-
-The proposed architecture is trained using a **multi-task learning** strategy.
-
-During each forward pass, the network jointly optimizes two related objectives:
-
-1. **Intermediate Task:** Predict the **11 Morphology Attribute Predictions**
-2. **Final Task:** Predict the **WBC Subtype**
-
-The two objectives are optimized simultaneously through a combined loss, encouraging the backbone to learn morphology-aware representations that benefit downstream subtype prediction.
-
-```mermaid
-flowchart LR
-
-A["Input Batch"]
-
-B["Forward Pass"]
-
-C["Morphology Attribute Loss"]
-
-D["WBC Subtype Loss"]
-
-E["Combined Multi-Task Loss"]
-
-F["Backpropagation"]
-
-G["Optimizer Update"]
-
-A --> B
-B --> C
-B --> D
-C --> E
-D --> E
-E --> F
-F --> G
-
-style A fill:#D6EAF8,stroke:#2471A3,color:#000
-style E fill:#FCF3CF,stroke:#B7950B,color:#000
-style G fill:#D5F5E3,stroke:#1E8449,color:#000
-```
-
-The complete training pipeline includes:
-
-| Stage | Included |
-|--------|:--------:|
-| Dataset Loading | ✅ |
-| Image Preprocessing | ✅ |
-| Data Augmentation | ✅ |
-| Forward Pass | ✅ |
-| Joint Multi-Task Loss | ✅ |
-| Backpropagation | ✅ |
-| Validation | ✅ |
-| Testing | ✅ |
-| Model Checkpointing | ✅ |
-| Inference | ✅ |
-
-Project hyperparameters—including optimizer, scheduler, learning rate, batch size, and training epochs—are configurable through the project configuration files.
-
----
-
----
-
-# 📦 Dataset
-
-This implementation is developed using the **WBCAtt** dataset, a publicly available White Blood Cell morphology dataset containing both **WBC subtype labels** and **11 morphology attribute annotations**.
-
-Unlike conventional WBC classification datasets that provide only a cell label, WBCAtt enables the model to learn **clinically meaningful morphology attributes** alongside **WBC subtype prediction** within a unified multi-task learning framework.
-
-| Property | Details |
-|----------|---------|
-| **Dataset** | WBCAtt |
-| **Image Type** | Peripheral Blood Smear Images |
-| **Input Resolution** | 224 × 224 RGB |
-| **Intermediate Supervision** | 11 Morphology Attribute Labels |
-| **Final Supervision** | WBC Subtype Labels |
-| **Overall Task** | Joint Morphology Attribute Prediction and WBC Subtype Prediction |
-
-### Dataset Resource
-
-https://rose1.ntu.edu.sg/dataset/WBCAtt/
-
----
-
-# 🧪 Data Pipeline
-
-The data processing pipeline prepares blood smear images before they are passed to the Vision Transformer.
-
-```mermaid
-flowchart LR
-
-A["WBCAtt Dataset"]
-
-B["Image Loading"]
-
-C["Data Augmentation"]
-
-D["Normalization"]
-
-E["Mini-batch Generation"]
-
-F["Model Training"]
-
-A --> B
-B --> C
-C --> D
-D --> E
-E --> F
-
-style A fill:#D6EAF8,stroke:#2471A3,color:#000
-style C fill:#D5F5E3,stroke:#1E8449,color:#000
-style F fill:#FADBD8,stroke:#C0392B,color:#000
-```
-
-### Training Preprocessing
-
-Training images undergo data augmentation to improve model robustness and generalization.
-
-Typical augmentations include:
-
-- Resize
-- Random Horizontal Flip
-- Random Rotation
-- Color Jitter
-- Image Normalization
-
-Validation and test images use deterministic preprocessing without random augmentation.
-
----
-
-# 🎯 Training Strategy
-
-The proposed architecture is trained using a **multi-task learning** strategy.
-
-During each forward pass, the network jointly optimizes two related objectives:
-
-1. **Intermediate Task:** Predict the **11 Morphology Attribute Predictions**
-2. **Final Task:** Predict the **WBC Subtype**
-
-The two objectives are optimized simultaneously through a combined loss, encouraging the backbone to learn morphology-aware representations that benefit downstream subtype prediction.
-
-```mermaid
-flowchart LR
-
-A["Input Batch"]
-
-B["Forward Pass"]
-
-C["Morphology Attribute Loss"]
-
-D["WBC Subtype Loss"]
-
-E["Combined Multi-Task Loss"]
-
-F["Backpropagation"]
-
-G["Optimizer Update"]
-
-A --> B
-B --> C
-B --> D
-C --> E
-D --> E
-E --> F
-F --> G
-
-style A fill:#D6EAF8,stroke:#2471A3,color:#000
-style E fill:#FCF3CF,stroke:#B7950B,color:#000
-style G fill:#D5F5E3,stroke:#1E8449,color:#000
-```
-
-The complete training pipeline includes:
-
-| Stage | Included |
-|--------|:--------:|
-| Dataset Loading | ✅ |
-| Image Preprocessing | ✅ |
-| Data Augmentation | ✅ |
-| Forward Pass | ✅ |
-| Joint Multi-Task Loss | ✅ |
-| Backpropagation | ✅ |
-| Validation | ✅ |
-| Testing | ✅ |
-| Model Checkpointing | ✅ |
-| Inference | ✅ |
-
-Project hyperparameters—including optimizer, scheduler, learning rate, batch size, and training epochs—are configurable through the project configuration files.
-
----
-
-# 📦 Dataset
-
-This implementation uses the **WBCAtt** dataset, a publicly available White Blood Cell (WBC) morphology dataset containing peripheral blood smear images annotated with both **11 morphology attributes** and **WBC subtype labels**.
-
-Unlike conventional WBC classification datasets that provide only subtype annotations, WBCAtt enables the model to learn interpretable morphology representations while simultaneously performing subtype prediction through a multi-task learning framework.
-
-The dataset is well suited to the objectives of this repository because it supports **Joint Morphology Attribute Prediction and WBC Subtype Prediction**, allowing the architecture to learn clinically meaningful intermediate representations before making the final subtype prediction.
 
 | Property | Details |
 |----------|---------|
@@ -531,37 +254,27 @@ The dataset is well suited to the objectives of this repository because it suppo
 
 Each image provides two complementary forms of supervision:
 
-- **11 Morphology Attribute Labels** used to train the attribute prediction heads.
-- **WBC Subtype Label** used to train the Morphology-Guided WBC Prediction Head.
+- **11 Morphology Attribute Labels** — used to train the attribute prediction heads.
+- **WBC Subtype Label** — used to train the Morphology-Guided WBC Prediction Head.
 
-This dual supervision encourages the network to learn morphology-aware representations that contribute to the final subtype prediction.
+### Dataset Resource
 
-### Dataset
-
-🔗 **WBCAtt Dataset**
-
-https://rose1.ntu.edu.sg/dataset/WBCAtt/
+🔗 https://rose1.ntu.edu.sg/dataset/WBCAtt/
 
 ---
+
 # 🧪 Data Pipeline
 
-The repository implements a complete data processing pipeline that prepares blood smear images for transformer-based learning.
-
-During training, images are augmented to improve generalization and reduce overfitting, while validation and test images undergo deterministic preprocessing to ensure consistent model evaluation.
+The data pipeline prepares blood smear images for transformer-based learning. Training images are augmented to improve generalization; validation and test images use deterministic preprocessing for consistent evaluation.
 
 ```mermaid
 flowchart LR
 
 A["WBCAtt Dataset"]
-
 B["Image Loading"]
-
 C["Data Augmentation"]
-
 D["Resize & Normalization"]
-
 E["Mini-batch Generation"]
-
 F["Joint Morphology Attribute Prediction<br/>and WBC Subtype Prediction"]
 
 A --> B
@@ -577,10 +290,6 @@ style F fill:#FADBD8,stroke:#C0392B,color:#000
 
 ### Training Preprocessing
 
-The training pipeline applies a sequence of image transformations to increase data diversity while preserving clinically relevant morphology.
-
-Typical preprocessing includes:
-
 - Resize images to **224 × 224**
 - Random Horizontal Flip
 - Random Rotation
@@ -589,46 +298,34 @@ Typical preprocessing includes:
 
 ### Validation and Testing
 
-Validation and test images are processed using deterministic transformations (resize and normalization only), ensuring that reported performance reflects the learned model rather than random data augmentation.
-
-This standardized preprocessing pipeline provides consistent inputs for **Joint Morphology Attribute Prediction and WBC Subtype Prediction** throughout training, validation, testing, and inference.
+Validation and test images are processed using deterministic transformations (resize and normalization only), ensuring reported performance reflects the learned model rather than random augmentation.
 
 ---
 
 # 🎯 Training Strategy
 
-The model is trained using a **multi-task learning** strategy, where both prediction tasks are optimized simultaneously during each training iteration.
-
-Rather than treating morphology attribute prediction and WBC subtype prediction as independent problems, the architecture learns them jointly. The intermediate morphology predictions guide the downstream **Morphology-Guided WBC Prediction Head**, encouraging the model to learn clinically meaningful representations before estimating the final subtype.
+The model is trained using a **multi-task learning** strategy, optimizing both prediction tasks simultaneously in each iteration. Rather than treating morphology attribute prediction and WBC subtype prediction as independent problems, the architecture learns them jointly — the intermediate morphology predictions guide the downstream **Morphology-Guided WBC Prediction Head**.
 
 ### Training Objectives
 
-For each input image, the network learns to predict:
+For each input image, the network predicts:
 
 - **11 Morphology Attribute Predictions**
 - **Predicted WBC Subtype**
 
-These two objectives are optimized together using a combined loss function.
+These are optimized together via a combined loss.
 
 ```mermaid
 flowchart LR
 
 A["Input Batch"]
-
 B["Forward Pass"]
-
 C["11 Morphology Attribute Predictions"]
-
 D["Predicted WBC Subtype"]
-
 E["Morphology Attribute Loss"]
-
 F["WBC Subtype Loss"]
-
 G["Combined Multi-Task Loss"]
-
 H["Backpropagation"]
-
 I["Parameter Update"]
 
 A --> B
@@ -648,23 +345,21 @@ style I fill:#D5F5E3,stroke:#1E8449,color:#000
 
 ### Optimization Process
 
-During training, the model performs the following steps for each mini-batch:
+For each mini-batch, the model:
 
-1. Generate **11 Morphology Attribute Predictions**.
-2. Use these predictions within the **Morphology-Guided WBC Prediction Head** to estimate the **Predicted WBC Subtype**.
-3. Compute separate losses for morphology attributes and WBC subtype prediction.
-4. Combine both losses into a single optimization objective.
-5. Update all network parameters through backpropagation.
+1. Generates **11 Morphology Attribute Predictions**.
+2. Uses these within the **Morphology-Guided WBC Prediction Head** to estimate the **Predicted WBC Subtype**.
+3. Computes separate losses for morphology attributes and WBC subtype prediction.
+4. Combines both losses into a single optimization objective.
+5. Updates all network parameters through backpropagation.
 
-This joint optimization strategy encourages the transformer encoder to learn shared morphology-aware representations that benefit both intermediate attribute prediction and the final WBC subtype prediction.
+This encourages the transformer encoder to learn shared morphology-aware representations that benefit both tasks.
 
 ---
 
 # ⚙️ Training Pipeline
 
-The repository provides a complete end-to-end training workflow for **Joint Morphology Attribute Prediction and WBC Subtype Prediction**, covering every stage from data loading to model inference.
-
-The training pipeline is designed with a modular structure, making it easy to understand, reproduce, and extend individual components without affecting the overall architecture.
+The repository provides a complete end-to-end training workflow, from data loading to inference, with a modular structure that lets individual components be modified or extended independently.
 
 | Stage | Description |
 |--------|-------------|
@@ -674,7 +369,7 @@ The training pipeline is designed with a modular structure, making it easy to un
 | 🧠 Forward Pass | Processes patch tokens and morphology attribute tokens through the Transformer encoder. |
 | 🧬 Morphology Attribute Prediction | Predicts the 11 morphology attributes using independent prediction heads. |
 | 🩸 WBC Subtype Prediction | Uses the Morphology-Guided WBC Prediction Head to estimate the WBC subtype. |
-| 🎯 Multi-Task Loss Computation | Combines morphology attribute loss and WBC subtype loss into a unified optimization objective. |
+| 🎯 Multi-Task Loss Computation | Combines morphology attribute loss and WBC subtype loss into a unified objective. |
 | 🔄 Backpropagation | Updates all learnable parameters using gradient-based optimization. |
 | ✅ Validation | Evaluates model performance on the validation dataset after each training epoch. |
 | 💾 Checkpoint Saving | Saves model checkpoints for reproducibility and future evaluation. |
@@ -717,13 +412,11 @@ Model Checkpoint
 Testing & Inference
 ```
 
-The optimizer, learning rate scheduler, batch size, learning rate, number of epochs, and other training hyperparameters are defined in the project configuration files, allowing experiments to be reproduced and modified without changing the core implementation.
+The optimizer, learning rate scheduler, batch size, learning rate, number of epochs, and other hyperparameters are defined in the project configuration files, allowing experiments to be reproduced and modified without changing the core implementation.
 
 ---
 
 # 📈 Implementation Checklist
-
-The repository implements the major architectural components required for **Joint Morphology Attribute Prediction and WBC Subtype Prediction**, together with the supporting training and evaluation pipeline.
 
 | Component | Status |
 |-----------|:------:|
@@ -744,27 +437,21 @@ The repository implements the major architectural components required for **Join
 
 ### Repository Highlights
 
-This implementation includes:
-
-- ✅ A modular Vision Transformer architecture inspired by **MAL-ViT**.
-- ✅ Learnable morphology attribute tokens for morphology-aware representation learning.
-- ✅ Independent prediction heads for the **11 Morphology Attribute Predictions**.
-- ✅ A **Morphology-Guided WBC Prediction Head** introduced as a project extension.
-- ✅ Joint optimization through **Multi-Task Learning**.
-- ✅ A complete training, validation, testing, and inference workflow.
-- ✅ A configurable project structure that supports reproducible experiments and future research extensions.
-
-Overall, the repository provides a complete PyTorch implementation for **Joint Morphology Attribute Prediction and WBC Subtype Prediction**, making it suitable for educational purposes, experimentation, and further research in biomedical computer vision.
+- A modular Vision Transformer architecture inspired by **MAL-ViT**.
+- Learnable morphology attribute tokens for morphology-aware representation learning.
+- Independent prediction heads for the **11 Morphology Attribute Predictions**.
+- A **Morphology-Guided WBC Prediction Head** introduced as a project extension.
+- Joint optimization through **Multi-Task Learning**.
+- A complete training, validation, testing, and inference workflow.
+- A configurable project structure supporting reproducible experiments and future research.
 
 ---
 
 # 📄 Relation to the MAL-ViT Paper
 
-This repository is an **independent educational implementation** inspired by the **Morphology Attribute Learning Vision Transformer (MAL-ViT)** paper.
+This repository is an **independent educational implementation** inspired by the **Morphology Attribute Learning Vision Transformer (MAL-ViT)** paper. It follows the paper's central idea of learning morphology-aware representations through dedicated attribute tokens within a Vision Transformer, used for morphology attribute prediction.
 
-The implementation follows the paper's central idea of learning morphology-aware representations through dedicated attribute tokens within a Vision Transformer. These learned representations are then used for morphology attribute prediction.
-
-As an extension, this project introduces a **Morphology-Guided WBC Prediction Head**, which utilizes the intermediate morphology predictions to perform downstream **WBC Subtype Prediction**. This additional prediction module is **not part of the original MAL-ViT architecture** and was developed specifically for this implementation.
+As an extension, this project introduces a **Morphology-Guided WBC Prediction Head**, which uses the intermediate morphology predictions to perform downstream **WBC Subtype Prediction**. This module is **not part of the original MAL-ViT architecture** and was developed specifically for this implementation.
 
 ## Comparison with the Original Paper
 
@@ -781,27 +468,21 @@ As an extension, this project introduces a **Morphology-Guided WBC Prediction He
 | Morphology-Guided WBC Prediction Head | ❌ | ⭐ Project Extension |
 | Joint Morphology Attribute Prediction and WBC Subtype Prediction | ❌ | ⭐ Project Extension |
 
-> **Transparency**
->
-> This repository should not be considered an official reproduction of the MAL-ViT paper. While it follows the paper's overall architectural concepts, some implementation details may differ. The **Morphology-Guided WBC Prediction Head** and the resulting **Joint Morphology Attribute Prediction and WBC Subtype Prediction** framework are extensions introduced specifically for this project.
+> **Transparency** — This repository should not be considered an official reproduction of the MAL-ViT paper. While it follows the paper's overall architectural concepts, some implementation details may differ. The **Morphology-Guided WBC Prediction Head** and the resulting joint prediction framework are extensions introduced specifically for this project.
 
 ## Purpose of this Repository
-
-The primary objective of this repository is to:
 
 - Understand the architectural principles introduced by MAL-ViT.
 - Provide a clean and modular PyTorch implementation for educational purposes.
 - Explore morphology-aware representation learning for biomedical image analysis.
-- Extend the original architecture with a downstream prediction module for **Joint Morphology Attribute Prediction and WBC Subtype Prediction**.
+- Extend the original architecture with a downstream prediction module for joint attribute and subtype prediction.
 - Provide a reproducible foundation for further research and experimentation.
 
 ---
 
 # 📊 Results
 
-The primary objective of this repository is to implement, understand, and extend the core concepts introduced by the **Morphology Attribute Learning Vision Transformer (MAL-ViT)** for **Joint Morphology Attribute Prediction and WBC Subtype Prediction**.
-
-The repository provides a complete end-to-end implementation covering data preprocessing, model training, evaluation, and inference.
+The primary objective of this repository is to implement, understand, and extend the core concepts introduced by MAL-ViT for **Joint Morphology Attribute Prediction and WBC Subtype Prediction**, with a complete end-to-end implementation covering data preprocessing, training, evaluation, and inference.
 
 ## Current Implementation
 
@@ -816,19 +497,9 @@ The repository provides a complete end-to-end implementation covering data prepr
 
 ## Evaluation Metrics
 
-The implementation supports standard classification metrics for evaluating both prediction tasks, including:
+The implementation supports standard classification metrics for evaluating both prediction tasks, including Accuracy, Precision, Recall, F1-Score, and Confusion Matrix. Additional metrics can be incorporated depending on future experimental requirements.
 
-- Accuracy
-- Precision
-- Recall
-- F1-Score
-- Confusion Matrix
-
-Additional metrics can be incorporated depending on future experimental requirements.
-
-> **Note**
->
-> Performance obtained from this implementation reflects the chosen training configuration, dataset split, and implementation details. It should **not** be interpreted as a direct reproduction or benchmark of the original MAL-ViT paper.
+> **Note** — Performance obtained from this implementation reflects the chosen training configuration, dataset split, and implementation details. It should **not** be interpreted as a direct reproduction or benchmark of the original MAL-ViT paper.
 
 ---
 
@@ -836,31 +507,89 @@ Additional metrics can be incorporated depending on future experimental requirem
 
 ```text
 WBC-Morphology-Analysis/
+├── data/                       # Dataset loading and preprocessing
+│   ├── __init__.py
+│   ├── dataloader.py
+│   ├── dataset.py
+│   ├── encoders.py
+│   └── transforms.py
 │
-├── configs/            # Configuration files
-├── data/               # Dataset loading and preprocessing
-├── models/             # Model architecture
-├── training/           # Training and evaluation utilities
-├── utils/              # Helper functions
-├── outputs/            # Checkpoints and experiment outputs
+├── datasets/                   # External datasets and annotations
+│   └── WBCAtt/
+│       ├── annotations/
+│       │   ├── pbc_attr_v1_train.csv
+│       │   ├── pbc_attr_v1_val.csv
+│       │   └── test.csv
+│       └── PBC_dataset_normal_DIB/
+│           ├── basophil/
+│           ├── eosinophil/
+│           ├── erythroblast/
+│           ├── ig/
+│           ├── lymphocyte/
+│           ├── monocyte/
+│           ├── neutrophil/
+│           └── platelet/
 │
-├── train.py            # Model training
-├── test.py             # Model evaluation
-├── inference.py        # Single-image inference
-├── requirements.txt
-└── README.md
+├── models/                     # Model architecture components
+│   ├── attention.py
+│   ├── attribute_heads.py
+│   ├── attribute_tokens.py
+│   ├── complete_model.py
+│   ├── encoder_block.py
+│   ├── mal_vit.py
+│   ├── mlp.py
+│   ├── patch_embedding.py
+│   ├── transformer.py
+│   └── wbc_classifier.py
+│
+├── notebooks/                  # Jupyter notebooks for analysis
+│   └── 01_dataset_analysis.ipynb
+│
+├── outputs/                    # Checkpoints, logs, and experiment outputs
+│   ├── checkpoints/
+│   │   ├── best_model.pth
+│   │   └── last_checkpoint.pth
+│   ├── logs/
+│   │   └── training_log.csv
+│   └── plots/
+│
+├── training/                   # Training and evaluation utilities
+│   ├── early_stopping.py
+│   ├── losses.py
+│   ├── scheduler.py
+│   ├── train_one_epoch.py
+│   ├── trainer.py
+│   └── validate.py
+│
+├── utils/                      # Helper functions and metrics
+│   ├── checkpoint.py
+│   ├── logger.py
+│   ├── metrics.py
+│   ├── seed.py
+│   └── visualization.py
+│
+├── tests/                      # Unit and smoke tests
+│   └── smoke_test.py
+│
+├── .gitignore
+├── config.py                   # Main config file
+├── train.py                    # Model training script
+├── test.py                     # Model evaluation script
+├── inference.py                # Single-image inference script
+├── requirements.txt            # Python dependencies
+└── README.md                   # Project documentation
 ```
 
 The project follows a modular structure to improve readability, reproducibility, and ease of future development. Individual components can be modified or extended independently without affecting the overall training pipeline.
 
 ---
+
 # 🚀 Getting Started
 
 ## 1. Clone the Repository
 
 ```bash
 git clone https://github.com/<username>/<repository>.git
-
 cd <repository>
 ```
 
@@ -872,11 +601,7 @@ pip install -r requirements.txt
 
 ## 3. Download the Dataset
 
-Download the **WBCAtt** dataset from:
-
-https://rose1.ntu.edu.sg/dataset/WBCAtt/
-
-After downloading, update the dataset path in the project configuration.
+Download the **WBCAtt** dataset from https://rose1.ntu.edu.sg/dataset/WBCAtt/ and update the dataset path in the project configuration.
 
 ## 4. Train the Model
 
@@ -897,9 +622,8 @@ python inference.py --image path/to/image.jpg
 ```
 
 ---
-# 💻 Skills Demonstrated
 
-This project demonstrates practical experience across multiple areas of deep learning and biomedical computer vision.
+# 💻 Skills Demonstrated
 
 | Area | Skills Demonstrated |
 |------|----------------------|
@@ -913,9 +637,8 @@ This project demonstrates practical experience across multiple areas of deep lea
 | Explainable AI | Morphology-Aware Representation Learning |
 
 ---
-# ⚠️ Limitations
 
-While this repository provides a complete implementation of the proposed training pipeline, several limitations should be considered.
+# ⚠️ Limitations
 
 - This repository is an independent implementation inspired by the MAL-ViT paper and is **not an official reproduction**.
 - Certain architectural and implementation details may differ from those described in the original publication.
@@ -925,20 +648,20 @@ While this repository provides a complete implementation of the proposed trainin
 - More comprehensive explainability analyses, such as Grad-CAM or Attention Rollout, remain future work.
 
 ---
+
 # 🔬 Future Work
 
-Potential directions for extending this project include:
-
-- Integrating **Grad-CAM** for visual explanation of morphology attribute predictions.
-- Implementing **Attention Rollout** for transformer interpretability.
-- Performing ablation studies on morphology attribute learning.
-- Evaluating the architecture on additional hematology datasets.
-- Comparing performance with pretrained Vision Transformer backbones.
-- Investigating self-supervised pretraining strategies.
-- Optimizing hyperparameters for improved multi-task learning.
-- Exploring clinical interpretation of learned morphology representations.
+- Grad-CAM
+- Attention Rollout
+- Ablation Studies
+- Hyperparameter Optimization
+- Self-Supervised Pretraining
+- Pretrained ViT Comparison
+- Additional Hematology Datasets
+- Clinical Interpretation
 
 ---
+
 # 📚 References
 
 | Resource | Link |
@@ -948,21 +671,21 @@ Potential directions for extending this project include:
 | **An Image is Worth 16×16 Words: Transformers for Image Recognition at Scale (ViT)** | https://arxiv.org/abs/2010.11929 |
 
 ---
+
 # 🙏 Acknowledgements
 
-This repository was inspired by the **Morphology Attribute Learning Vision Transformer (MAL-ViT)** framework and developed using the publicly available **WBCAtt** dataset.
-
-I sincerely thank the authors of the MAL-ViT paper for introducing the morphology attribute learning framework and the creators of the WBCAtt dataset for making high-quality morphology annotations publicly available. Their contributions have enabled further exploration of interpretable deep learning approaches for biomedical image analysis.
+This repository was inspired by the MAL-ViT framework and developed using the publicly available WBCAtt dataset. I sincerely thank the authors of the MAL-ViT paper for introducing the morphology attribute learning framework and the creators of the WBCAtt dataset for making high-quality morphology annotations publicly available.
 
 ---
+
 # 👨‍💻 Author
 
 ## Muhammad Fassi Ur Rehman
 
-**BS Artificial Intelligence**  
+**BS Artificial Intelligence**
 COMSATS University Islamabad
 
-### Research Interests
+### Areas of Interest
 
 - Computer Vision
 - Medical Image Analysis
