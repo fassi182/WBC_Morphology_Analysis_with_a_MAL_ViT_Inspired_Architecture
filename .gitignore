@@ -6,11 +6,6 @@ __pycache__/
 venv/
 .env
 
-# Outputs
-outputs/checkpoints/
-outputs/logs/
-outputs/plots/
-
 # Dataset
 datasets/
 
