@@ -24,6 +24,8 @@ Implemented from scratch in **PyTorch** with a modular pipeline (dataset prep, t
 
 ---
 
+🚀 ***Live Demo:*** https://fassi182-wbc-morphology-analysis-mal-vit-app-xek6em.streamlit.app/
+
 # 📝 Implementation at a Glance
 
 | Category | Details |
@@ -577,7 +579,8 @@ WBC-Morphology-Analysis/
 ├── test.py                     # Model evaluation script
 ├── inference.py                # Single-image inference script
 ├── requirements.txt            # Python dependencies
-└── README.md                   # Project documentation
+└── README.md    
+└── app.py                      #stramlit app  to use this model
 ```
 
 The project follows a modular structure to improve readability, reproducibility, and ease of future development. Individual components can be modified or extended independently without affecting the overall training pipeline.

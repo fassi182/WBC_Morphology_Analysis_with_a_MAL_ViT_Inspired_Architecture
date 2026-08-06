@@ -1,6 +1,6 @@
 """
 Streamlit App
-Explainable WBC Classification using MAL-ViT
+
 
 Run:
 streamlit run app.py
@@ -20,12 +20,12 @@ from inference import predict
 # ==========================================================
 
 st.set_page_config(
-    page_title="Explainable WBC Classification",
+    page_title="WBC Morphology Analysis with a MAL-ViT Inspired Architecture",
     page_icon="🩸",
     layout="wide",
 )
 
-st.title("🩸 Explainable White Blood Cell Classification")
+st.title("🩸 WBC Morphology Analysis with a MAL-ViT Inspired Architecture")
 st.write(
     "Predict White Blood Cell type and 11 morphology attributes using MAL-ViT."
 )
