@@ -1,63 +1,82 @@
 """
-early_stopping.py
+MAL-ViT Early Stopping
+----------------------
 
-Early stopping utility 
-
-Stops training when validation loss does not improve.
-
-
+Stops training when validation metric stops improving.
 """
 
-import torch
-
-
 class EarlyStopping:
-    """
-    Early stopping based on validation loss.
-    """
 
     def __init__(
         self,
         patience=10,
-        min_delta=0.0,
+        min_delta=0.0001,
+        mode="min",
     ):
+        if mode not in ("min", "max"):
+            raise ValueError(
+                "mode must be either 'min' or 'max'"
+            )
 
         self.patience = patience
         self.min_delta = min_delta
-
-        self.best_loss = float("inf")
+        self.mode = mode
 
         self.counter = 0
+        self.best_value = None
+        self.should_stop = False
 
-        self.early_stop = False
+    def step(self, value):
+        """
+        Update early stopping state.
 
-    def __call__(self, val_loss):
+        Returns:
+            bool: True if training should stop.
+        """
 
-        if val_loss < self.best_loss - self.min_delta:
-
-            self.best_loss = val_loss
-
+        if self.best_value is None:
+            self.best_value = value
             self.counter = 0
+            return False
 
+        if self.mode == "min":
+            improved = value < (
+                self.best_value - self.min_delta
+            )
         else:
-
-            self.counter += 1
-
-            print(
-                f"EarlyStopping "
-                f"{self.counter}/{self.patience}"
+            improved = value > (
+                self.best_value + self.min_delta
             )
 
+        if improved:
+            self.best_value = value
+            self.counter = 0
+        else:
+            self.counter += 1
+
             if self.counter >= self.patience:
+                self.should_stop = True
 
-                self.early_stop = True
+        return self.should_stop
 
-        return self.early_stop
+    def reset(self):
+        """Reset early stopping state."""
 
+        self.counter = 0
+        self.best_value = None
+        self.should_stop = False
 
-# ==========================================================
-# Quick Test
-# ==========================================================
+    def __call__(self, value):
+        """
+        Allow:
+
+            early_stopping(value)
+
+        for compatibility with the training runner.
+        """
+
+        return self.step(value)
+
 
 if __name__ == "__main__":
 
@@ -65,34 +84,32 @@ if __name__ == "__main__":
     print("Early Stopping Test")
     print("=" * 60)
 
-    losses = [
-        1.20,
-        1.10,
-        1.00,
-        0.95,
-        0.95,
-        0.96,
-        0.97,
-        0.98,
-        0.99,
-    ]
-
-    stopper = EarlyStopping(
+    early_stopping = EarlyStopping(
         patience=3,
-        min_delta=0.001,
+        min_delta=0.0001,
+        mode="min",
     )
 
-    for epoch, loss in enumerate(losses, start=1):
+    values = [
+        1.0,
+        0.8,
+        0.7,
+        0.7,
+        0.7,
+        0.7,
+    ]
 
-        stop = stopper(loss)
+    for value in values:
+
+        stop = early_stopping(value)
 
         print(
-            f"Epoch {epoch:2d} | "
-            f"Loss {loss:.3f}"
+            f"value={value:.4f} "
+            f"counter={early_stopping.counter} "
+            f"stop={stop}"
         )
 
-        if stop:
+    assert early_stopping.should_stop is True
 
-            print("\nTraining stopped.")
-
-            break
+    print()
+    print("Early stopping validation: PASSED")

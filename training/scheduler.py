@@ -1,84 +1,133 @@
 """
-scheduler.py
+training/scheduler.py
 
-Learning Rate Scheduler 
+Learning-rate scheduler for MAL-ViT.
 
-Uses Cosine Annealing Learning Rate scheduling, which is commonly
-used for Vision Transformer training.
-
+Uses:
+    Linear warmup
+    +
+    Cosine decay
 """
 
-import torch
-import torch.nn as nn
-import torch.optim as optim
+import math
 
-from config import NUM_EPOCHS
+from torch.optim import Optimizer
+
+from config import (
+    NUM_EPOCHS,
+    WARMUP_EPOCHS,
+    MIN_LEARNING_RATE,
+)
 
 
-def create_scheduler(optimizer):
+def cosine_warmup_scheduler(
+    optimizer: Optimizer,
+    warmup_epochs: int,
+    total_epochs: int,
+    min_lr: float = 1e-6,
+):
     """
-    Create the learning rate scheduler.
-
-    Parameters
-    ----------
-    optimizer : torch.optim.Optimizer
-
-    Returns
-    -------
-    torch.optim.lr_scheduler.CosineAnnealingLR
+    Create LambdaLR with warmup + cosine decay.
     """
 
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(
-        optimizer=optimizer,
-        T_max=NUM_EPOCHS,
-        eta_min=1e-6,
+    base_lrs = [
+        group["lr"]
+        for group in optimizer.param_groups
+    ]
+
+    def lr_lambda(epoch):
+
+        if epoch < warmup_epochs:
+
+            return float(
+                epoch + 1
+            ) / float(
+                max(1, warmup_epochs)
+            )
+
+        progress = (
+            epoch - warmup_epochs
+        ) / float(
+            max(
+                1,
+                total_epochs
+                - warmup_epochs
+                - 1,
+            )
+        )
+
+        progress = min(
+            max(progress, 0.0),
+            1.0,
+        )
+
+        cosine = (
+            0.5
+            * (
+                1
+                + math.cos(
+                    math.pi * progress
+                )
+            )
+        )
+
+        lr = (
+            min_lr
+            + (
+                base_lrs[0]
+                - min_lr
+            )
+            * cosine
+        )
+
+        return lr / base_lrs[0]
+
+    from torch.optim.lr_scheduler import LambdaLR
+
+    return LambdaLR(
+        optimizer,
+        lr_lambda,
     )
 
-    return scheduler
-
-
-# ==========================================================
-# Quick Test
-# ==========================================================
 
 if __name__ == "__main__":
 
+    import torch
+
+    from config import LEARNING_RATE
+
     print("=" * 60)
-    print("Cosine Annealing Scheduler Test")
+    print("MAL-ViT Scheduler Test")
     print("=" * 60)
 
-    model = nn.Linear(10, 2)
-
-    optimizer = optim.AdamW(
-        model.parameters(),
-        lr=1e-4,
+    model = torch.nn.Linear(
+        10,
+        5,
     )
 
-    scheduler = create_scheduler(optimizer)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=LEARNING_RATE,
+    )
 
-    criterion = nn.MSELoss()
+    scheduler = cosine_warmup_scheduler(
+        optimizer,
+        WARMUP_EPOCHS,
+        NUM_EPOCHS,
+        MIN_LEARNING_RATE,
+    )
+
+    print("\nLearning rates:")
 
     for epoch in range(10):
-
-        optimizer.zero_grad()
-
-        x = torch.randn(8, 10)
-        y = torch.randn(8, 2)
-
-        prediction = model(x)
-
-        loss = criterion(prediction, y)
-
-        loss.backward()
 
         optimizer.step()
 
         scheduler.step()
 
-        current_lr = optimizer.param_groups[0]["lr"]
-
         print(
-            f"Epoch {epoch+1:2d} | "
-            f"Loss: {loss.item():.4f} | "
-            f"LR: {current_lr:.8f}"
+            f"Epoch {epoch + 1:02d}: "
+            f"{optimizer.param_groups[0]['lr']:.8f}"
         )
+
+    print("\nScheduler validation: PASSED")

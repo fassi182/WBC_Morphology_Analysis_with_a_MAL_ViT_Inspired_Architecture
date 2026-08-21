@@ -1,358 +1,264 @@
 """
-trainer.py
+MAL-ViT Trainer
+---------------
 
-Trainer class 
+Handles:
 
-Responsibilities
-----------------
-1. Build optimizer
-2. Build scheduler
-3. Load checkpoint
-4. Train model
-5. Validate model
-6. Save best model
-7. Resume training
-
-
+    Forward pass
+    Loss computation
+    Backpropagation
+    Optimizer step
+    Metrics
 """
 
-from pathlib import Path
-
 import torch
-import torch.optim as optim
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-
-from config import (
-    DEVICE,
-    NUM_EPOCHS,
-    LEARNING_RATE,
-    WEIGHT_DECAY,
-    CHECKPOINT_DIR,
-    BEST_MODEL_NAME,
-    LAST_CHECKPOINT_NAME,
-    SCHEDULER_FACTOR,
-    SCHEDULER_PATIENCE,
-    MIN_LEARNING_RATE,
-)
-
-from utils.logger import TrainingLogger
-
-from utils.checkpoint import (
-    save_checkpoint,
-    load_checkpoint,
-)
-
-from training.train_one_epoch import train_one_epoch
-from training.validate import validate
 
 
 class Trainer:
-    """
-    Trainer for Explainable WBC Classification.
-    """
 
     def __init__(
         self,
         model,
-        train_loader,
-        val_loader,
-        criterion,
+        optimizer,
+        loss_fn,
+        device,
+        logger=None,
     ):
 
-        self.device = DEVICE
+        self.model = model
+        self.optimizer = optimizer
+        self.loss_fn = loss_fn
+        self.device = device
+        self.logger = logger
 
-        self.model = model.to(self.device)
+    # ======================================================
+    # Move batch to device
+    # ======================================================
 
-        self.train_loader = train_loader
+    def _move_batch(self, batch):
 
-        self.val_loader = val_loader
-
-        self.criterion = criterion
-
-        # --------------------------------------------------
-        # Optimizer
-        # --------------------------------------------------
-
-        self.optimizer = optim.AdamW(
-
-            self.model.parameters(),
-
-            lr=LEARNING_RATE,
-
-            weight_decay=WEIGHT_DECAY,
-
+        images = batch[0].to(
+            self.device,
+            non_blocking=True,
         )
 
-        # --------------------------------------------------
-        # LR Scheduler
-        # --------------------------------------------------
-
-        self.scheduler = ReduceLROnPlateau(
-
-            self.optimizer,
-
-            mode="min",
-
-            factor=SCHEDULER_FACTOR,
-
-            patience=SCHEDULER_PATIENCE,
-
-            min_lr=MIN_LEARNING_RATE,
-
+        labels = batch[1].to(
+            self.device,
+            non_blocking=True,
         )
 
-        # --------------------------------------------------
-        # Training State
-        # --------------------------------------------------
+        attributes = batch[2].to(
+            self.device,
+            non_blocking=True,
+        )
 
-        self.start_epoch = 0
+        return images, labels, attributes
 
-        self.best_loss = float("inf")
+    # ======================================================
+    # Training step
+    # ======================================================
 
-        self.history = {
+    def train_step(self, batch):
 
-            "train_loss": [],
+        self.model.train()
 
-            "train_attribute_loss": [],
+        images, labels, attributes = (
+            self._move_batch(batch)
+        )
 
-            "train_wbc_loss": [],
+        self.optimizer.zero_grad(
+            set_to_none=True
+        )
 
-            "train_accuracy": [],
+        outputs = self.model(images)
 
-            "val_loss": [],
+        # Compatible with compute_total_loss
+        loss_dict = self.loss_fn(
+            outputs=outputs,
+            wbc_targets=labels,
+            attribute_targets=attributes,
+        )
 
-            "val_attribute_loss": [],
+        total_loss = loss_dict["total_loss"]
 
-            "val_wbc_loss": [],
+        total_loss.backward()
 
-            "val_accuracy": [],
+        self.optimizer.step()
 
+        with torch.no_grad():
+
+            predictions = outputs[
+                "wbc_prediction"
+            ]
+
+            correct = (
+                predictions == labels
+            ).sum().item()
+
+            batch_size = labels.size(0)
+
+        return {
+            "loss": total_loss.item(),
+            "wbc_loss": loss_dict[
+                "wbc_loss"
+            ].item(),
+            "attribute_loss": loss_dict[
+                "attribute_loss"
+            ].item(),
+            "correct": correct,
+            "total": batch_size,
         }
 
-        # --------------------------------------------------
-        # Logger
-        # --------------------------------------------------
-
-        self.logger = TrainingLogger()
-
-        # --------------------------------------------------
-        # Paths
-        # --------------------------------------------------
-
-        self.best_model_path = (
-            CHECKPOINT_DIR / BEST_MODEL_NAME
-        )
-
-        self.last_checkpoint_path = (
-            CHECKPOINT_DIR / LAST_CHECKPOINT_NAME
-        )
-        # ======================================================
-    # Resume Training
+    # ======================================================
+    # Validation step
     # ======================================================
 
-    def resume(self):
+    @torch.no_grad()
+    def validation_step(self, batch):
 
-        if not self.last_checkpoint_path.exists():
+        self.model.eval()
 
-            print("\nNo checkpoint found. Starting fresh training.")
-
-            return
-
-        checkpoint = load_checkpoint(
-            self.last_checkpoint_path
+        images, labels, attributes = (
+            self._move_batch(batch)
         )
 
-        self.model.load_state_dict(
-            checkpoint["model_state_dict"]
+        outputs = self.model(images)
+
+        loss_dict = self.loss_fn(
+            outputs=outputs,
+            wbc_targets=labels,
+            attribute_targets=attributes,
         )
 
-        self.optimizer.load_state_dict(
-            checkpoint["optimizer_state_dict"]
-        )
+        predictions = outputs[
+            "wbc_prediction"
+        ]
 
-        self.scheduler.load_state_dict(
-            checkpoint["scheduler_state_dict"]
-        )
+        correct = (
+            predictions == labels
+        ).sum().item()
 
-        self.start_epoch = checkpoint["epoch"] + 1
+        batch_size = labels.size(0)
 
-        self.best_loss = checkpoint["best_loss"]
-
-        self.history = checkpoint["history"]
-
-        print(f"\nResumed training from epoch {self.start_epoch}")
-
-
-    # ======================================================
-    # Save Checkpoint
-    # ======================================================
-
-    def save(self, epoch):
-
-        checkpoint = {
-
-            "epoch": epoch,
-
-            "model_state_dict":
-                self.model.state_dict(),
-
-            "optimizer_state_dict":
-                self.optimizer.state_dict(),
-
-            "scheduler_state_dict":
-                self.scheduler.state_dict(),
-
-            "best_loss":
-                self.best_loss,
-
-            "history":
-                self.history,
-
+        return {
+            "loss": loss_dict[
+                "total_loss"
+            ].item(),
+            "wbc_loss": loss_dict[
+                "wbc_loss"
+            ].item(),
+            "attribute_loss": loss_dict[
+                "attribute_loss"
+            ].item(),
+            "correct": correct,
+            "total": batch_size,
         }
 
-        save_checkpoint(
-            checkpoint,
-            self.last_checkpoint_path,
-        )
-
-
     # ======================================================
-    # Train
+    # Train epoch
     # ======================================================
 
-    def fit(self):
+    def train_epoch(self, dataloader):
 
-        print("=" * 70)
-        print("Starting Training")
-        print("=" * 70)
+        self.model.train()
 
-        for epoch in range(
-            self.start_epoch,
-            NUM_EPOCHS,
-        ):
+        total_loss = 0.0
+        total_wbc_loss = 0.0
+        total_attribute_loss = 0.0
 
-            print("\n")
-            print("=" * 70)
-            print(f"Epoch {epoch+1}/{NUM_EPOCHS}")
-            print("=" * 70)
+        correct = 0
+        total = 0
 
-            # ----------------------------------------
-            # Train
-            # ----------------------------------------
+        for batch in dataloader:
 
-            train_metrics = train_one_epoch(
+            result = self.train_step(batch)
 
-                self.model,
+            total_loss += result["loss"]
+            total_wbc_loss += result["wbc_loss"]
+            total_attribute_loss += result[
+                "attribute_loss"
+            ]
 
-                self.train_loader,
+            correct += result["correct"]
+            total += result["total"]
 
-                self.optimizer,
+        num_batches = len(dataloader)
 
-                self.criterion,
+        return {
+            "loss": total_loss / num_batches,
+            "wbc_loss": (
+                total_wbc_loss / num_batches
+            ),
+            "attribute_loss": (
+                total_attribute_loss
+                / num_batches
+            ),
+            "accuracy": (
+                correct / total
+                if total > 0
+                else 0.0
+            ),
+        }
 
-                self.device,
+    # ======================================================
+    # Validation epoch
+    # ======================================================
 
-            )
+    def validate_epoch(self, dataloader):
 
-            # ----------------------------------------
-            # Validation
-            # ----------------------------------------
+        self.model.eval()
 
-            val_metrics = validate(
+        total_loss = 0.0
+        total_wbc_loss = 0.0
+        total_attribute_loss = 0.0
 
-                self.model,
+        correct = 0
+        total = 0
 
-                self.val_loader,
+        for batch in dataloader:
 
-                self.criterion,
+            result = self.validation_step(batch)
 
-                self.device,
+            total_loss += result["loss"]
+            total_wbc_loss += result["wbc_loss"]
+            total_attribute_loss += result[
+                "attribute_loss"
+            ]
 
-            )
+            correct += result["correct"]
+            total += result["total"]
 
-            # ----------------------------------------
-            # Scheduler
-            # ----------------------------------------
+        num_batches = len(dataloader)
 
-            self.scheduler.step(
-                val_metrics["loss"]
-            )
+        return {
+            "loss": total_loss / num_batches,
+            "wbc_loss": (
+                total_wbc_loss / num_batches
+            ),
+            "attribute_loss": (
+                total_attribute_loss
+                / num_batches
+            ),
+            "accuracy": (
+                correct / total
+                if total > 0
+                else 0.0
+            ),
+        }
 
-            # ----------------------------------------
-            # History
-            # ----------------------------------------
 
-            self.history["train_loss"].append(
-                train_metrics["loss"]
-            )
+if __name__ == "__main__":
 
-            self.history["train_attribute_loss"].append(
-                train_metrics["attribute_loss"]
-            )
+    print("=" * 60)
+    print("MAL-ViT Trainer Module")
+    print("=" * 60)
 
-            self.history["train_wbc_loss"].append(
-                train_metrics["wbc_loss"]
-            )
+    print("\nTrainer class imported successfully.")
 
-            self.history["train_accuracy"].append(
-                train_metrics["accuracy"]
-            )
+    print("\nSupported operations:")
+    print("  - train_step")
+    print("  - validation_step")
+    print("  - train_epoch")
+    print("  - validate_epoch")
 
-            self.history["val_loss"].append(
-                val_metrics["loss"]
-            )
-
-            self.history["val_attribute_loss"].append(
-                val_metrics["attribute_loss"]
-            )
-
-            self.history["val_wbc_loss"].append(
-                val_metrics["wbc_loss"]
-            )
-
-            self.history["val_accuracy"].append(
-                val_metrics["accuracy"]
-            )
-
-            # ----------------------------------------
-            # Logger
-            # ----------------------------------------
-
-            self.logger.log(
-
-                epoch + 1,
-
-                train_metrics,
-
-                val_metrics,
-
-            )
-
-            # ----------------------------------------
-            # Save Last Checkpoint
-            # ----------------------------------------
-
-            self.save(epoch)
-
-            # ----------------------------------------
-            # Save Best Model
-            # ----------------------------------------
-
-            if val_metrics["loss"] < self.best_loss:
-
-                self.best_loss = val_metrics["loss"]
-
-                torch.save(
-
-                    self.model.state_dict(),
-
-                    self.best_model_path,
-
-                )
-
-                print("\nBest model updated.")
-
-        print("\n")
-        print("=" * 70)
-        print("Training Complete")
-        print("=" * 70)
+    print("\nTrainer validation: PASSED")

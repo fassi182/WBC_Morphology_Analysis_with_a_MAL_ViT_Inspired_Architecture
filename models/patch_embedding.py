@@ -1,162 +1,279 @@
+"""
+patch_embedding.py
+
+Patch Embedding for MAL-ViT.
+
+Pipeline:
+
+    Input Image
+        │
+        ▼
+    Conv2D
+        │
+        ▼
+    Non-overlapping Image Patches
+        │
+        ▼
+    Flatten
+        │
+        ▼
+    Patch Embeddings
+
+For the current configuration:
+
+    Image size      = 224 x 224
+    Patch size      = 16 x 16
+    Patch grid      = 14 x 14
+    Number patches  = 196
+    Embedding dim   = 192
+
+Input:
+    (B, 3, 224, 224)
+
+Output:
+    (B, 196, 192)
+"""
+
 import torch
 import torch.nn as nn
 
 from config import (
     IMAGE_SIZE,
     PATCH_SIZE,
-    IN_CHANNELS,
-    EMBED_DIM
+    EMBED_DIM,
+    NUM_PATCHES,
 )
 
 
+# ============================================================
+# Patch Embedding
+# ============================================================
+
 class PatchEmbedding(nn.Module):
     """
-    Converts input images into patch tokens.
+    Convert an image into a sequence of patch embeddings.
 
-    Input:
-        Image tensor:
-        (B, C, H, W)
-
-    Output:
-        Patch tokens:
-        (B, Num_Patches, Embed_Dim)
-
-    Example:
-        (8,3,224,224)
-            ->
-        (8,196,192)
+    Each 16x16 image patch becomes one 192-dimensional token.
     """
 
     def __init__(
         self,
         image_size=IMAGE_SIZE,
         patch_size=PATCH_SIZE,
-        in_channels=IN_CHANNELS,
-        embed_dim=EMBED_DIM
+        in_channels=3,
+        embed_dim=EMBED_DIM,
     ):
         super().__init__()
 
+        # ----------------------------------------------------
+        # Validate image / patch configuration
+        # ----------------------------------------------------
+
+        if image_size % patch_size != 0:
+            raise ValueError(
+                f"Image size ({image_size}) must be divisible "
+                f"by patch size ({patch_size})."
+            )
+
         self.image_size = image_size
         self.patch_size = patch_size
+        self.in_channels = in_channels
+        self.embed_dim = embed_dim
+
+        self.grid_size = image_size // patch_size
 
         self.num_patches = (
-            image_size // patch_size
-        ) ** 2
+            self.grid_size * self.grid_size
+        )
 
-
-        # Patch projection layer
+        # ----------------------------------------------------
+        # Projection
+        # ----------------------------------------------------
         #
-        # Equivalent operation:
+        # Conv2D with:
         #
-        # 16x16x3 patch
+        # kernel_size = patch_size
+        # stride      = patch_size
         #
-        #       |
+        # creates non-overlapping patches.
         #
-        # Flatten
+        # Input:
+        #     (B, 3, 224, 224)
         #
-        #       |
+        # Output:
+        #     (B, 192, 14, 14)
         #
-        # Linear projection
-        #
-        #       |
-        #
-        # 192 dimensional token
-        #
+        # ----------------------------------------------------
 
         self.projection = nn.Conv2d(
             in_channels=in_channels,
             out_channels=embed_dim,
             kernel_size=patch_size,
-            stride=patch_size
+            stride=patch_size,
         )
 
+        # ----------------------------------------------------
+        # Safety check against config.py
+        # ----------------------------------------------------
 
-    def forward(self, x):
+        if self.num_patches != NUM_PATCHES:
+            raise ValueError(
+                "Patch configuration mismatch.\n"
+                f"Calculated patches: {self.num_patches}\n"
+                f"Config patches:     {NUM_PATCHES}"
+            )
 
+    # ========================================================
+    # Forward
+    # ========================================================
+
+    def forward(self, images):
         """
-        Forward pass
+        Parameters
+        ----------
+        images : torch.Tensor
+            Shape:
+                (B, 3, 224, 224)
 
-        Input:
-            x:
-            (B,C,H,W)
-
-        Output:
-            tokens:
-            (B,N,D)
-
+        Returns
+        -------
+        torch.Tensor
+            Shape:
+                (B, 196, 192)
         """
 
-        B, C, H, W = x.shape
+        # ----------------------------------------------------
+        # Validate input dimensions
+        # ----------------------------------------------------
 
+        if images.ndim != 4:
+            raise ValueError(
+                "Expected image tensor with shape "
+                "(B, C, H, W), "
+                f"got {tuple(images.shape)}"
+            )
 
-        # Check image size
-        assert (
-            H == self.image_size
-            and W == self.image_size
-        ), (
-            f"Expected image size "
-            f"{self.image_size}, "
-            f"but got {H}x{W}"
-        )
+        batch_size, channels, height, width = images.shape
 
+        if channels != self.in_channels:
+            raise ValueError(
+                f"Expected {self.in_channels} input channels, "
+                f"got {channels}."
+            )
 
-        # Create patches
-        #
-        # Before:
-        # (B,3,224,224)
-        #
-        # After Conv:
-        # (B,192,14,14)
+        if height != self.image_size or width != self.image_size:
+            raise ValueError(
+                f"Expected images of size "
+                f"{self.image_size}x{self.image_size}, "
+                f"got {height}x{width}."
+            )
 
-        x = self.projection(x)
+        # ----------------------------------------------------
+        # Patch projection
+        # ----------------------------------------------------
 
+        x = self.projection(images)
 
-        # Rearrange:
-        #
-        # (B,192,14,14)
-        #
-        # ->
-        #
-        # (B,196,192)
+        # Shape:
+        # (B, 192, 14, 14)
+
+        # ----------------------------------------------------
+        # Flatten spatial dimensions
+        # ----------------------------------------------------
 
         x = x.flatten(2)
 
-        x = x.transpose(1,2)
+        # Shape:
+        # (B, 192, 196)
 
+        # ----------------------------------------------------
+        # Move embedding dimension to last position
+        # ----------------------------------------------------
+
+        x = x.transpose(1, 2)
+
+        # Shape:
+        # (B, 196, 192)
 
         return x
 
 
+# ============================================================
+# Quick Test
+# ============================================================
 
 if __name__ == "__main__":
 
+    print("=" * 70)
+    print("MAL-ViT Patch Embedding Test")
+    print("=" * 70)
 
-    print("="*60)
-    print("Patch Embedding Test")
-    print("="*60)
+    print("\nConfiguration")
+    print(f"Image size     : {IMAGE_SIZE} x {IMAGE_SIZE}")
+    print(f"Patch size     : {PATCH_SIZE} x {PATCH_SIZE}")
+    print(f"Patch grid     : {IMAGE_SIZE // PATCH_SIZE} x "
+          f"{IMAGE_SIZE // PATCH_SIZE}")
+    print(f"Number patches : {NUM_PATCHES}")
+    print(f"Embedding dim  : {EMBED_DIM}")
 
+    # --------------------------------------------------------
+    # Create model
+    # --------------------------------------------------------
 
-    image = torch.randn(
-        8,
+    patch_embedding = PatchEmbedding()
+
+    print("\nPatch Embedding:")
+    print(patch_embedding)
+
+    # --------------------------------------------------------
+    # Dummy image batch
+    # --------------------------------------------------------
+
+    images = torch.randn(
+        4,
         3,
-        224,
-        224
+        IMAGE_SIZE,
+        IMAGE_SIZE,
     )
 
+    # --------------------------------------------------------
+    # Forward pass
+    # --------------------------------------------------------
 
-    model = PatchEmbedding()
+    patch_tokens = patch_embedding(images)
 
+    print("\nInput shape:")
+    print(images.shape)
 
-    output = model(image)
+    print("\nOutput shape:")
+    print(patch_tokens.shape)
 
+    # --------------------------------------------------------
+    # Expected shape
+    # --------------------------------------------------------
 
-    print("Input Shape:")
-    print(image.shape)
+    expected_shape = (
+        4,
+        NUM_PATCHES,
+        EMBED_DIM,
+    )
 
+    print("\nExpected shape:")
+    print(expected_shape)
 
-    print("\nOutput Shape:")
-    print(output.shape)
+    # --------------------------------------------------------
+    # Validation
+    # --------------------------------------------------------
 
+    assert patch_tokens.shape == expected_shape, (
+        f"Patch embedding shape mismatch. "
+        f"Expected {expected_shape}, "
+        f"got {tuple(patch_tokens.shape)}"
+    )
 
-    print("\nExpected:")
-    print("(8,196,192)")
+    assert torch.isfinite(patch_tokens).all(), (
+        "Patch embeddings contain NaN or Inf values."
+    )
+
+    print("\nPatch embedding validation: PASSED")
+    print("=" * 70)

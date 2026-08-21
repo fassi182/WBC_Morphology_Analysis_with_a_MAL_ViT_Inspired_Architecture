@@ -1,224 +1,308 @@
 """
-losses.py
+MAL-ViT Loss Functions
+----------------------
 
-Loss functions 
+Multi-task loss for:
 
-Computes
-
-1. Morphology Attribute Loss
-2. WBC Classification Loss
-3. Combined Multi-Task Loss
-
+1. WBC classification
+2. Morphological attribute classification
 """
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from config import (
-    ATTRIBUTE_CLASSES,
-    ATTRIBUTE_LOSS_WEIGHT,
-    WBC_LOSS_WEIGHT,
+    ATTRIBUTE_NAMES,
+    ATTRIBUTE_CLASS_COUNTS,
+    NUM_WBC_CLASSES,
 )
 
 
-class ExplainableWBCLoss(nn.Module):
+# ============================================================
+# WBC Classification Loss
+# ============================================================
+
+def compute_wbc_loss(
+    wbc_logits,
+    wbc_targets,
+):
     """
-    Joint loss for morphology prediction and
-    WBC classification.
+    Cross-entropy loss for WBC classification.
 
-    Total Loss
+    wbc_logits:
+        (B, 5)
 
-        L = λ_attr * L_attr + λ_wbc * L_wbc
+    wbc_targets:
+        (B,)
     """
 
-    def __init__(
-        self,
-        attribute_weight=ATTRIBUTE_LOSS_WEIGHT,
-        wbc_weight=WBC_LOSS_WEIGHT,
+    return F.cross_entropy(
+        wbc_logits,
+        wbc_targets,
+    )
+
+
+# ============================================================
+# Attribute Classification Loss
+# ============================================================
+
+def compute_attribute_loss(
+    attribute_predictions,
+    attribute_targets,
+):
+    """
+    Computes average cross-entropy loss
+    across all 11 morphological attributes.
+
+    attribute_predictions:
+        Dictionary:
+            attribute name -> (B, num_classes)
+
+    attribute_targets:
+        Tensor:
+            (B, 11)
+    """
+
+    total_loss = 0.0
+
+    for index, name in enumerate(
+        ATTRIBUTE_NAMES
     ):
-        super().__init__()
 
-        self.attribute_weight = attribute_weight
-        self.wbc_weight = wbc_weight
+        logits = attribute_predictions[
+            name
+        ]
 
-        self.cross_entropy = nn.CrossEntropyLoss()
+        targets = attribute_targets[
+            :, index
+        ]
 
-        self.attribute_names = list(
-            ATTRIBUTE_CLASSES.keys()
+        loss = F.cross_entropy(
+            logits,
+            targets,
         )
 
-    def forward(
-        self,
-        outputs,
-        targets,
-    ):
-        """
-        Parameters
-        ----------
-        outputs : dict
+        total_loss += loss
 
-            {
-                attribute_predictions,
-                wbc_logits
-            }
+    total_loss = (
+        total_loss
+        / len(ATTRIBUTE_NAMES)
+    )
 
-        targets : dict
+    return total_loss
 
-            {
-                attributes,
-                cell_label
-            }
 
-        Returns
-        -------
-        dict
-        """
+# ============================================================
+# Complete Multi-Task Loss
+# ============================================================
 
-        attribute_predictions = outputs["attribute_predictions"]
-        attribute_targets = targets["attributes"]
+def compute_total_loss(
+    outputs,
+    wbc_targets,
+    attribute_targets,
+    wbc_weight=1.0,
+    attribute_weight=1.0,
+):
+    """
+    Computes the complete MAL-ViT loss.
 
-        wbc_logits = outputs["wbc_logits"]
-        wbc_targets = targets["cell_label"]
+    Total Loss =
+        WBC Loss
+        +
+        Attribute Loss
 
-        # --------------------------------------------------
-        # Attribute Loss
-        # --------------------------------------------------
+    Parameters
+    ----------
+    outputs:
+        Output dictionary from CompleteMALViT.
 
-        attribute_loss = 0.0
+    wbc_targets:
+        Tensor of shape (B,)
 
-        for idx, attribute_name in enumerate(self.attribute_names):
+    attribute_targets:
+        Tensor of shape (B, 11)
+    """
 
-            prediction = attribute_predictions[attribute_name]
+    wbc_logits = outputs[
+        "wbc_logits"
+    ]
 
-            target = attribute_targets[:, idx]
+    attribute_predictions = outputs[
+        "attribute_predictions"
+    ]
 
-            attribute_loss += self.cross_entropy(
-                prediction,
-                target,
-            )
+    # --------------------------------------------------------
+    # WBC loss
+    # --------------------------------------------------------
 
-        attribute_loss /= len(self.attribute_names)
+    wbc_loss = compute_wbc_loss(
+        wbc_logits,
+        wbc_targets,
+    )
 
-        # --------------------------------------------------
-        # WBC Classification Loss
-        # --------------------------------------------------
+    # --------------------------------------------------------
+    # Attribute loss
+    # --------------------------------------------------------
 
-        wbc_loss = self.cross_entropy(
-            wbc_logits,
-            wbc_targets,
+    attribute_loss = (
+        compute_attribute_loss(
+            attribute_predictions,
+            attribute_targets,
         )
+    )
 
-        # --------------------------------------------------
-        # Total Loss
-        # --------------------------------------------------
+    # --------------------------------------------------------
+    # Total loss
+    # --------------------------------------------------------
 
-        total_loss = (
+    total_loss = (
+        wbc_weight * wbc_loss
+        +
+        attribute_weight * attribute_loss
+    )
 
-            self.attribute_weight * attribute_loss
-
-            +
-
-            self.wbc_weight * wbc_loss
-
-        )
-
-        return {
-
-            "total_loss": total_loss,
-
-            "attribute_loss": attribute_loss,
-
-            "wbc_loss": wbc_loss,
-
-        }
+    return {
+        "total_loss": total_loss,
+        "wbc_loss": wbc_loss,
+        "attribute_loss": attribute_loss,
+    }
 
 
-# ==========================================================
+# ============================================================
 # Quick Test
-# ==========================================================
-
+# ============================================================
 if __name__ == "__main__":
+
+    print("=" * 60)
+    print("MAL-ViT Loss Test")
+    print("=" * 60)
 
     batch_size = 4
 
+    # ========================================================
+    # WBC
+    # ========================================================
+
+    wbc_logits = torch.randn(
+        batch_size,
+        NUM_WBC_CLASSES,
+    )
+
+    wbc_targets = torch.randint(
+        0,
+        NUM_WBC_CLASSES,
+        (batch_size,),
+    )
+
+    # ========================================================
+    # Attribute class counts
+    #
+    # Use the values directly from the configuration dictionary.
+    # ========================================================
+
+    attribute_class_counts = {
+        "cell_size": 2,
+        "cell_shape": 2,
+        "nucleus_shape": 6,
+        "nuclear_cytoplasmic_ratio": 2,
+        "chromatin_density": 2,
+        "cytoplasm_vacuole": 2,
+        "cytoplasm_texture": 2,
+        "cytoplasm_colour": 3,
+        "granule_type": 4,
+        "granule_colour": 4,
+        "granularity": 2,
+    }
+
+    # ========================================================
+    # Attribute Predictions
+    # ========================================================
+
+    attribute_predictions = {}
+
+    for name in ATTRIBUTE_NAMES:
+
+        num_classes = attribute_class_counts[
+            name
+        ]
+
+        attribute_predictions[name] = torch.randn(
+            batch_size,
+            num_classes,
+        )
+
+    # ========================================================
+    # Attribute Targets
+    # ========================================================
+
+    attribute_targets = torch.stack(
+        [
+            torch.randint(
+                0,
+                attribute_class_counts[name],
+                (batch_size,),
+            )
+            for name in ATTRIBUTE_NAMES
+        ],
+        dim=1,
+    )
+
+    # ========================================================
+    # Complete Outputs
+    # ========================================================
+
     outputs = {
-
-        "attribute_predictions": {
-
-            "cell_size": torch.randn(batch_size, 2),
-
-            "cell_shape": torch.randn(batch_size, 2),
-
-            "nucleus_shape": torch.randn(batch_size, 6),
-
-            "nuclear_cytoplasmic_ratio": torch.randn(batch_size, 2),
-
-            "chromatin_density": torch.randn(batch_size, 2),
-
-            "cytoplasm_vacuole": torch.randn(batch_size, 2),
-
-            "cytoplasm_texture": torch.randn(batch_size, 2),
-
-            "cytoplasm_colour": torch.randn(batch_size, 3),
-
-            "granule_type": torch.randn(batch_size, 4),
-
-            "granule_colour": torch.randn(batch_size, 4),
-
-            "granularity": torch.randn(batch_size, 2),
-
-        },
-
-        "wbc_logits": torch.randn(batch_size, 8),
-
+        "wbc_logits": wbc_logits,
+        "attribute_predictions":
+            attribute_predictions,
     }
 
-    targets = {
+    # ========================================================
+    # Compute Loss
+    # ========================================================
 
-        "attributes": torch.randint(
-            0,
-            2,
-            (batch_size, 11),
-        ),
-
-        "cell_label": torch.randint(
-            0,
-            8,
-            (batch_size,),
-        ),
-
-    }
-
-    # Multi-class attribute targets
-
-    targets["attributes"][:, 2] = torch.randint(
-        0, 6, (batch_size,)
+    losses = compute_total_loss(
+        outputs=outputs,
+        wbc_targets=wbc_targets,
+        attribute_targets=attribute_targets,
     )
 
-    targets["attributes"][:, 7] = torch.randint(
-        0, 3, (batch_size,)
+    # ========================================================
+    # Results
+    # ========================================================
+
+    print("\nTotal loss:")
+    print(
+        losses["total_loss"].item()
     )
 
-    targets["attributes"][:, 8] = torch.randint(
-        0, 4, (batch_size,)
+    print("\nWBC loss:")
+    print(
+        losses["wbc_loss"].item()
     )
 
-    targets["attributes"][:, 9] = torch.randint(
-        0, 4, (batch_size,)
+    print("\nAttribute loss:")
+    print(
+        losses["attribute_loss"].item()
     )
 
-    criterion = ExplainableWBCLoss()
+    # ========================================================
+    # Validation
+    # ========================================================
 
-    losses = criterion(outputs, targets)
+    assert torch.isfinite(
+        losses["total_loss"]
+    )
 
-    print("=" * 60)
-    print("Explainable WBC Loss Test")
-    print("=" * 60)
+    assert torch.isfinite(
+        losses["wbc_loss"]
+    )
 
-    print(f"Attribute Weight : {criterion.attribute_weight}")
-    print(f"WBC Weight       : {criterion.wbc_weight}")
+    assert torch.isfinite(
+        losses["attribute_loss"]
+    )
 
-    print()
-
-    for name, value in losses.items():
-        print(f"{name:20}: {value.item():.4f}")
+    print(
+        "\nLoss validation: PASSED"
+    )

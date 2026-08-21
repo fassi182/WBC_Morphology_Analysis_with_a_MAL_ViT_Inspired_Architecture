@@ -1,11 +1,27 @@
 """
 attribute_heads.py
 
-Independent attribute classification heads for MAL-ViT.
+Attribute classification heads for MAL-ViT.
 
-Each attribute token is passed to its own classification head.
+Each morphology attribute has its own classification head.
 
+Input:
+    Attribute token features
+    (B, 11, 192)
 
+Output:
+    Dictionary containing logits for each attribute.
+
+Example:
+    cell_size        -> (B, 2)
+    cell_shape       -> (B, 2)
+    nucleus_shape    -> (B, 6)
+    cytoplasm_colour -> (B, 3)
+    granule_type     -> (B, 4)
+    ...
+
+The number of output classes is determined by the WBCAtt
+attribute configuration.
 """
 
 import torch
@@ -13,68 +29,140 @@ import torch.nn as nn
 
 from config import (
     EMBED_DIM,
-    ATTRIBUTE_CLASSES,
+    NUM_ATTRIBUTE_TOKENS,
+    ATTRIBUTE_NAMES,
+    NUM_ATTRIBUTES,
 )
+
+from data.encoders import ATTRIBUTE_ENCODERS
 
 
 class AttributeHeads(nn.Module):
     """
-    Independent classification heads for each morphology attribute.
+    Collection of independent classification heads.
+
+    One head corresponds to one morphology attribute/token.
     """
 
-    def __init__(
-        self,
-        embed_dim=EMBED_DIM,
-    ):
+    def __init__(self):
+
         super().__init__()
 
-        self.attribute_names = list(
-            ATTRIBUTE_CLASSES.keys()
-        )
+        # --------------------------------------------------
+        # Validation
+        # --------------------------------------------------
+
+        if NUM_ATTRIBUTES != NUM_ATTRIBUTE_TOKENS:
+
+            raise ValueError(
+                "Number of attributes and attribute tokens "
+                "must be identical. "
+                f"NUM_ATTRIBUTES={NUM_ATTRIBUTES}, "
+                f"NUM_ATTRIBUTE_TOKENS={NUM_ATTRIBUTE_TOKENS}"
+            )
+
+        # --------------------------------------------------
+        # Create One Head Per Attribute
+        # --------------------------------------------------
 
         self.heads = nn.ModuleDict()
 
-        for attribute_name, num_classes in ATTRIBUTE_CLASSES.items():
+        for attribute in ATTRIBUTE_NAMES:
 
-            self.heads[attribute_name] = nn.Linear(
-                embed_dim,
+            if attribute not in ATTRIBUTE_ENCODERS:
+
+                raise KeyError(
+                    f"Missing encoder for attribute: {attribute}"
+                )
+
+            num_classes = len(
+                ATTRIBUTE_ENCODERS[attribute]
+            )
+
+            self.heads[attribute] = nn.Linear(
+                EMBED_DIM,
                 num_classes,
             )
 
-    def forward(self, attribute_tokens):
+    # ======================================================
+    # Forward
+    # ======================================================
+
+    def forward(self, attribute_features):
         """
         Parameters
         ----------
-        attribute_tokens : Tensor
+        attribute_features : torch.Tensor
 
             Shape:
-            (B, 11, 192)
+                (B, NUM_ATTRIBUTES, EMBED_DIM)
 
         Returns
         -------
-        dict
+        predictions : dict[str, torch.Tensor]
 
-            {
-                "cell_size": logits,
-                ...
-            }
+            Each dictionary value contains logits.
+
+            Example:
+
+                {
+                    "cell_size": (B, 2),
+                    "cell_shape": (B, 2),
+                    "nucleus_shape": (B, 6),
+                    ...
+                }
         """
 
-        outputs = {}
+        # --------------------------------------------------
+        # Validate Input
+        # --------------------------------------------------
 
-        for i, attribute_name in enumerate(
-            self.attribute_names
-        ):
+        if attribute_features.ndim != 3:
 
-            token = attribute_tokens[:, i]
-
-            logits = self.heads[attribute_name](
-                token
+            raise ValueError(
+                "Attribute features must have shape "
+                "(B, attributes, embedding_dim). "
+                f"Received: "
+                f"{tuple(attribute_features.shape)}"
             )
 
-            outputs[attribute_name] = logits
+        if attribute_features.size(1) != NUM_ATTRIBUTE_TOKENS:
 
-        return outputs
+            raise ValueError(
+                f"Expected {NUM_ATTRIBUTE_TOKENS} "
+                f"attribute tokens, "
+                f"received {attribute_features.size(1)}"
+            )
+
+        if attribute_features.size(2) != EMBED_DIM:
+
+            raise ValueError(
+                f"Expected embedding dimension "
+                f"{EMBED_DIM}, "
+                f"received {attribute_features.size(2)}"
+            )
+
+        # --------------------------------------------------
+        # Generate Predictions
+        # --------------------------------------------------
+
+        predictions = {}
+
+        for index, attribute in enumerate(
+            ATTRIBUTE_NAMES
+        ):
+
+            token = attribute_features[
+                :,
+                index,
+                :,
+            ]
+
+            predictions[attribute] = self.heads[
+                attribute
+            ](token)
+
+        return predictions
 
 
 # ==========================================================
@@ -83,22 +171,98 @@ class AttributeHeads(nn.Module):
 
 if __name__ == "__main__":
 
-    print("=" * 60)
-    print("Attribute Heads Test")
-    print("=" * 60)
+    print("=" * 70)
+    print("MAL-ViT Attribute Heads Test")
+    print("=" * 70)
 
-    batch_size = 8
+    print("\nConfiguration")
+    print(
+        f"Number of attributes : "
+        f"{NUM_ATTRIBUTES}"
+    )
 
-    attribute_tokens = torch.randn(
+    print(
+        f"Attribute tokens     : "
+        f"{NUM_ATTRIBUTE_TOKENS}"
+    )
+
+    print(
+        f"Embedding dimension  : "
+        f"{EMBED_DIM}"
+    )
+
+    # ------------------------------------------------------
+    # Create Model
+    # ------------------------------------------------------
+
+    heads = AttributeHeads()
+
+    print("\nAttribute Heads:")
+    print(heads)
+
+    # ------------------------------------------------------
+    # Dummy Input
+    # ------------------------------------------------------
+
+    batch_size = 4
+
+    attribute_features = torch.randn(
         batch_size,
-        11,
+        NUM_ATTRIBUTE_TOKENS,
         EMBED_DIM,
     )
 
-    model = AttributeHeads()
+    print("\nInput shape:")
+    print(attribute_features.shape)
 
-    outputs = model(attribute_tokens)
+    # ------------------------------------------------------
+    # Forward
+    # ------------------------------------------------------
 
-    for name, logits in outputs.items():
+    predictions = heads(
+        attribute_features
+    )
 
-        print(f"{name:30} {tuple(logits.shape)}")
+    # ------------------------------------------------------
+    # Print Predictions
+    # ------------------------------------------------------
+
+    print("\nAttribute predictions:")
+
+    for attribute in ATTRIBUTE_NAMES:
+
+        logits = predictions[attribute]
+
+        num_classes = len(
+            ATTRIBUTE_ENCODERS[attribute]
+        )
+
+        print(
+            f"  {attribute:30} "
+            f"{tuple(logits.shape)} "
+            f"expected="
+            f"({batch_size}, {num_classes})"
+        )
+
+    # ------------------------------------------------------
+    # Validation
+    # ------------------------------------------------------
+
+    assert len(predictions) == NUM_ATTRIBUTES
+
+    for attribute in ATTRIBUTE_NAMES:
+
+        logits = predictions[attribute]
+
+        expected_classes = len(
+            ATTRIBUTE_ENCODERS[attribute]
+        )
+
+        assert logits.shape == (
+            batch_size,
+            expected_classes,
+        )
+
+    print("\nAttribute heads validation: PASSED")
+
+    print("=" * 70)

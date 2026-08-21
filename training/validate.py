@@ -1,125 +1,87 @@
 """
-validate.py
-
-Validation loop 
-
-This module evaluates the model on the validation dataset without
-updating the model parameters.
-
+MAL-ViT Validation Script
 """
 
-from tqdm import tqdm
 import torch
 
+from config import DEVICE
 
-def validate(
-    model,
-    dataloader,
-    criterion,
-    device,
-):
-    """
-    Validate the model for one epoch.
+from data.dataloader import create_dataloaders
+from models.complete_model import CompleteMALViT
+from training.losses import compute_total_loss
+from training.evaluator import evaluate
 
-    Parameters
-    ----------
-    model : nn.Module
 
-    dataloader : DataLoader
+def main():
 
-    criterion : ExplainableWBCLoss
+    print("=" * 70)
+    print("MAL-ViT VALIDATION")
+    print("=" * 70)
 
-    device : torch.device
+    device = torch.device(DEVICE)
 
-    Returns
-    -------
-    dict
-        Validation statistics.
-    """
+    print("\nDevice:", device)
+
+    # ==========================================================
+    # Data
+    # ==========================================================
+
+    print("\nLoading validation data...")
+
+    _, val_loader, _ = create_dataloaders()
+
+    print(
+        "Validation batches:",
+        len(val_loader)
+    )
+
+    # ==========================================================
+    # Model
+    # ==========================================================
+
+    model = CompleteMALViT().to(device)
+
+    checkpoint = torch.load(
+        "checkpoints/best.pt",
+        map_location=device,
+    )
+
+    if "model_state_dict" in checkpoint:
+        model.load_state_dict(
+            checkpoint["model_state_dict"]
+        )
+    elif "model" in checkpoint:
+        model.load_state_dict(
+            checkpoint["model"]
+        )
+    else:
+        model.load_state_dict(checkpoint)
 
     model.eval()
 
-    running_total = 0.0
-    running_attribute = 0.0
-    running_wbc = 0.0
+    # ==========================================================
+    # Evaluation
+    # ==========================================================
 
-    correct = 0
-    total = 0
-
-    progress_bar = tqdm(
-        dataloader,
-        desc="Validation",
-        leave=False,
+    metrics = evaluate(
+        model=model,
+        dataloader=val_loader,
+        loss_fn=compute_total_loss,
+        device=device,
     )
 
-    with torch.no_grad():
+    print("\nValidation Results")
 
-        for batch in progress_bar:
+    for key, value in metrics.items():
 
-            images = batch["image"].to(device)
+        if isinstance(value, float):
+            print(f"{key:20s}: {value:.4f}")
 
-            cell_labels = batch["cell_label"].to(device)
+        else:
+            print(f"{key:20s}: {value}")
 
-            attributes = batch["attributes"].to(device)
+    print("\nValidation complete.")
 
-            outputs = model(images)
-
-            losses = criterion(
-
-                outputs,
-
-                {
-                    "attributes": attributes,
-                    "cell_label": cell_labels,
-                }
-
-            )
-
-            running_total += losses["total_loss"].item()
-
-            running_attribute += losses["attribute_loss"].item()
-
-            running_wbc += losses["wbc_loss"].item()
-
-            predictions = outputs["wbc_logits"].argmax(dim=1)
-
-            correct += (predictions == cell_labels).sum().item()
-
-            total += cell_labels.size(0)
-
-            progress_bar.set_postfix(
-
-                loss=f"{losses['total_loss'].item():.4f}",
-
-                acc=f"{100 * correct / total:.2f}%"
-
-            )
-
-    return {
-
-        "loss":
-            running_total / len(dataloader),
-
-        "attribute_loss":
-            running_attribute / len(dataloader),
-
-        "wbc_loss":
-            running_wbc / len(dataloader),
-
-        "accuracy":
-            100 * correct / total,
-
-    }
-
-
-# ==========================================================
-# Quick Test
-# ==========================================================
 
 if __name__ == "__main__":
-
-    print("=" * 60)
-    print("Validation Module")
-    print("=" * 60)
-
-    print("This module is intended to be called from trainer.py")
+    main()

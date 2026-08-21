@@ -1,15 +1,25 @@
 """
 attention.py
 
-Multi-Head Self-Attention module used by ViT-Tiny and MAL-ViT.
+Multi-Head Self-Attention for MAL-ViT.
 
 Input:
-    (B, N, D)
+    (B, N, EMBED_DIM)
 
 Output:
-    (B, N, D)
+    attention output:
+        (B, N, EMBED_DIM)
 
+    attention weights:
+        (B, NUM_HEADS, N, N)
 
+The attention weights are explicitly returned because they are
+required for:
+
+    - attention-sink diagnostics
+    - attention visualization
+    - XAI
+    - attribute-token localization
 """
 
 import torch
@@ -17,98 +27,120 @@ import torch.nn as nn
 
 from config import (
     EMBED_DIM,
-    NUM_HEADS,
-    QKV_BIAS,
+    NUM_ATTENTION_HEADS,
     ATTENTION_DROPOUT,
-    PROJECTION_DROPOUT,
+    TRANSFORMER_DROPOUT,
 )
 
 
 class MultiHeadSelfAttention(nn.Module):
-    """
-    Multi-Head Self-Attention.
-
-    Input:
-        (B, N, D)
-
-    Output:
-        (B, N, D)
-
-    where
-
-    B = Batch Size
-    N = Number of Tokens
-    D = Embedding Dimension
-    """
 
     def __init__(
         self,
-        embed_dim=EMBED_DIM,
-        num_heads=NUM_HEADS,
-        qkv_bias=QKV_BIAS,
+        dim=EMBED_DIM,
+        num_heads=NUM_ATTENTION_HEADS,
         attention_dropout=ATTENTION_DROPOUT,
-        projection_dropout=PROJECTION_DROPOUT,
+        projection_dropout=TRANSFORMER_DROPOUT,
     ):
         super().__init__()
 
-        assert (
-            embed_dim % num_heads == 0
-        ), "Embedding dimension must be divisible by number of heads."
+        assert dim % num_heads == 0, (
+            f"Embedding dimension {dim} must be "
+            f"divisible by number of heads {num_heads}."
+        )
 
-        self.embed_dim = embed_dim
+        self.dim = dim
         self.num_heads = num_heads
-
-        self.head_dim = embed_dim // num_heads
+        self.head_dim = dim // num_heads
 
         self.scale = self.head_dim ** -0.5
 
-        # Linear projection for Query, Key and Value
+        # --------------------------------------------------
+        # QKV Projection
+        # --------------------------------------------------
+
         self.qkv = nn.Linear(
-            embed_dim,
-            embed_dim * 3,
-            bias=qkv_bias,
+            dim,
+            dim * 3,
         )
 
-        self.attention_dropout = nn.Dropout(attention_dropout)
+        # --------------------------------------------------
+        # Output Projection
+        # --------------------------------------------------
 
         self.projection = nn.Linear(
-            embed_dim,
-            embed_dim,
+            dim,
+            dim,
+        )
+
+        # --------------------------------------------------
+        # Dropout
+        # --------------------------------------------------
+
+        self.attention_dropout = nn.Dropout(
+            attention_dropout
         )
 
         self.projection_dropout = nn.Dropout(
             projection_dropout
         )
 
-    def forward(self, x):
+    # ======================================================
+    # Forward
+    # ======================================================
+
+    def forward(
+        self,
+        x,
+        return_attention=False,
+    ):
         """
-        x:
-            (B, N, D)
+        Parameters
+        ----------
+        x : torch.Tensor
+
+            Shape:
+                (B, N, D)
+
+        return_attention : bool
+
+            If True:
+                returns output and attention weights.
+
+            If False:
+                returns only output.
+
+        Returns
+        -------
+        output
+
+            Shape:
+                (B, N, D)
+
+        attention_weights
+
+            Shape:
+                (B, H, N, N)
         """
 
-        B, N, D = x.shape
+        batch_size, num_tokens, dim = x.shape
 
-        # -----------------------------------------
-        # Compute Q, K, V
-        # -----------------------------------------
+        # --------------------------------------------------
+        # QKV
+        # --------------------------------------------------
 
         qkv = self.qkv(x)
 
-        # (B, N, 3*D)
-        # ->
-        # (B, N, 3, Heads, Head_Dim)
-
+        # (B, N, 3D)
         qkv = qkv.reshape(
-            B,
-            N,
+            batch_size,
+            num_tokens,
             3,
             self.num_heads,
             self.head_dim,
         )
 
-        # ->
-        # (3, B, Heads, N, Head_Dim)
-
+        # (3, B, H, N, head_dim)
         qkv = qkv.permute(
             2,
             0,
@@ -117,43 +149,97 @@ class MultiHeadSelfAttention(nn.Module):
             4,
         )
 
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        query, key, value = qkv.unbind(0)
 
-        # -----------------------------------------
+        # --------------------------------------------------
         # Attention Scores
-        # -----------------------------------------
+        # --------------------------------------------------
 
-        attention = (q @ k.transpose(-2, -1)) * self.scale
+        attention_scores = (
+            query @ key.transpose(-2, -1)
+        ) * self.scale
 
-        attention = attention.softmax(dim=-1)
+        # --------------------------------------------------
+        # Softmax
+        # --------------------------------------------------
 
-        attention = self.attention_dropout(attention)
-
-        # -----------------------------------------
-        # Weighted Sum
-        # -----------------------------------------
-
-        x = attention @ v
-
-        # (B, Heads, N, Head_Dim)
-        # ->
-        # (B, N, Heads, Head_Dim)
-
-        x = x.transpose(1, 2)
-
-        x = x.reshape(
-            B,
-            N,
-            self.embed_dim,
+        attention_weights = torch.softmax(
+            attention_scores,
+            dim=-1,
         )
 
-        # Final Linear Projection
+        # --------------------------------------------------
+        # Save RAW attention before dropout
+        # --------------------------------------------------
+        #
+        # This is important for diagnostics.
+        #
+        # Dropout-modified attention should NOT be used
+        # to determine whether an attention sink exists.
+        #
+        # --------------------------------------------------
 
-        x = self.projection(x)
+        raw_attention_weights = attention_weights
 
-        x = self.projection_dropout(x)
+        # --------------------------------------------------
+        # Attention Dropout
+        # --------------------------------------------------
 
-        return x
+        attention_weights = self.attention_dropout(
+            attention_weights
+        )
+
+        # --------------------------------------------------
+        # Weighted Value
+        # --------------------------------------------------
+
+        output = (
+            attention_weights @ value
+        )
+
+        # (B, H, N, head_dim)
+
+        # --------------------------------------------------
+        # Merge Heads
+        # --------------------------------------------------
+
+        output = output.transpose(
+            1,
+            2,
+        )
+
+        # (B, N, H, head_dim)
+
+        output = output.reshape(
+            batch_size,
+            num_tokens,
+            dim,
+        )
+
+        # --------------------------------------------------
+        # Output Projection
+        # --------------------------------------------------
+
+        output = self.projection(
+            output
+        )
+
+        output = self.projection_dropout(
+            output
+        )
+
+        # --------------------------------------------------
+        # Return
+        # --------------------------------------------------
+
+        if return_attention:
+
+            return (
+                output,
+                raw_attention_weights,
+            )
+
+        return output
 
 
 # ==========================================================
@@ -162,24 +248,121 @@ class MultiHeadSelfAttention(nn.Module):
 
 if __name__ == "__main__":
 
-    print("=" * 60)
-    print("Multi-Head Self-Attention Test")
-    print("=" * 60)
+    print("=" * 70)
+    print("MAL-ViT Multi-Head Self-Attention Test")
+    print("=" * 70)
 
-    tokens = torch.randn(
-        8,
-        196,
+    print("\nConfiguration")
+
+    print(
+        f"Embedding dimension : {EMBED_DIM}"
+    )
+
+    print(
+        f"Attention heads     : {NUM_ATTENTION_HEADS}"
+    )
+
+    print(
+        f"Head dimension      : "
+        f"{EMBED_DIM // NUM_ATTENTION_HEADS}"
+    )
+
+    print(
+        f"Total tokens        : 211"
+    )
+
+    print(
+        f"Attention dropout   : "
+        f"{ATTENTION_DROPOUT}"
+    )
+
+    # ------------------------------------------------------
+    # Create module
+    # ------------------------------------------------------
+
+    attention = MultiHeadSelfAttention()
+
+    print("\nAttention Module:")
+    print(attention)
+
+    # ------------------------------------------------------
+    # Dummy input
+    # ------------------------------------------------------
+
+    x = torch.randn(
+        4,
+        211,
         EMBED_DIM,
     )
 
-    model = MultiHeadSelfAttention()
+    print("\nInput shape:")
+    print(x.shape)
 
-    output = model(tokens)
+    # ------------------------------------------------------
+    # Forward
+    # ------------------------------------------------------
 
-    print("\nInput Shape:")
-    print(tokens.shape)
-    print("\nOutput Shape:")
+    output, weights = attention(
+        x,
+        return_attention=True,
+    )
+
+    print("\nOutput shape:")
     print(output.shape)
 
-    print("\nExpected:")
-    print("(8, 196, 192)")
+    print("\nAttention weight shape:")
+    print(weights.shape)
+
+    # ------------------------------------------------------
+    # Expected
+    # ------------------------------------------------------
+
+    expected_output_shape = (
+        4,
+        211,
+        EMBED_DIM,
+    )
+
+    expected_attention_shape = (
+        4,
+        NUM_ATTENTION_HEADS,
+        211,
+        211,
+    )
+
+    print("\nExpected output shape:")
+    print(expected_output_shape)
+
+    print("\nExpected attention shape:")
+    print(expected_attention_shape)
+
+    # ------------------------------------------------------
+    # Validation
+    # ------------------------------------------------------
+
+    assert tuple(output.shape) == (
+        expected_output_shape
+    )
+
+    assert tuple(weights.shape) == (
+        expected_attention_shape
+    )
+
+    assert torch.isfinite(output).all()
+
+    assert torch.isfinite(weights).all()
+
+    # Attention rows should sum approximately to 1
+    row_sums = weights.sum(
+        dim=-1
+    )
+
+    assert torch.allclose(
+        row_sums,
+        torch.ones_like(row_sums),
+        atol=1e-5,
+    )
+
+    print("\nAttention validation: PASSED")
+
+    print("=" * 70)

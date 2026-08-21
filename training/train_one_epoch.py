@@ -1,118 +1,82 @@
 """
-train_one_epoch.py
-
-Train the model for one epoch.
-
-
+MAL-ViT One Epoch Training Test
 """
 
-from tqdm import tqdm
 import torch
 
+from config import DEVICE
 
-def train_one_epoch(
-    model,
-    dataloader,
-    optimizer,
-    criterion,
-    device,
-):
-    """
-    Train model for one epoch.
+from data.dataloader import (
+    create_dataloaders,
+)
 
-    Returns
-    -------
-    dict
-    """
+from models.complete_model import (
+    CompleteMALViT,
+)
 
-    model.train()
+from training.optimizer import (
+    create_optimizer,
+)
 
-    running_total = 0.0
-    running_attribute = 0.0
-    running_wbc = 0.0
+from training.trainer import (
+    Trainer,
+)
 
-    correct = 0
-    total = 0
 
-    progress_bar = tqdm(
-        dataloader,
-        desc="Training",
-        leave=False,
+def main():
+
+    print("=" * 60)
+    print("MAL-ViT ONE EPOCH TRAINING TEST")
+    print("=" * 60)
+
+    print("\n[1] Creating DataLoaders...")
+
+    train_loader, val_loader, test_loader = (
+        create_dataloaders()
     )
 
-    for batch in progress_bar:
+    print(
+        "Train batches:",
+        len(train_loader),
+    )
 
-        images = batch["image"].to(device)
+    print("\n[2] Creating model...")
 
-        cell_labels = batch["cell_label"].to(device)
+    model = CompleteMALViT()
 
-        attributes = batch["attributes"].to(device)
+    print("\n[3] Creating optimizer...")
 
-        optimizer.zero_grad()
+    optimizer = create_optimizer(
+        model
+    )
 
-        outputs = model(images)
+    print("\n[4] Creating trainer...")
 
-        losses = criterion(
+    trainer = Trainer(
+        model=model,
+        optimizer=optimizer,
+        device=DEVICE,
+    )
 
-            outputs,
+    print("\n[5] Training one epoch...")
 
-            {
-                "attributes": attributes,
-                "cell_label": cell_labels,
-            }
+    metrics = trainer.train_epoch(
+        train_loader
+    )
 
+    print("\nTraining results:")
+
+    for name, value in metrics.items():
+
+        print(
+            f"{name:20s}: {value:.6f}"
         )
 
-        loss = losses["total_loss"]
+    print(
+        "\nOne epoch training: PASSED"
+    )
 
-        loss.backward()
 
-        optimizer.step()
+if __name__ == "__main__":
 
-        running_total += loss.item()
-
-        running_attribute += losses[
-            "attribute_loss"
-        ].item()
-
-        running_wbc += losses[
-            "wbc_loss"
-        ].item()
-
-        predictions = outputs[
-            "wbc_logits"
-        ].argmax(dim=1)
-
-        correct += (
-            predictions == cell_labels
-        ).sum().item()
-
-        total += cell_labels.size(0)
-
-        progress_bar.set_postfix(
-
-            loss=f"{loss.item():.4f}",
-
-            acc=f"{100*correct/total:.2f}%"
-
-        )
-
-    return {
-
-        "loss":
-
-            running_total / len(dataloader),
-
-        "attribute_loss":
-
-            running_attribute / len(dataloader),
-
-        "wbc_loss":
-
-            running_wbc / len(dataloader),
-
-        "accuracy":
-
-            100 * correct / total,
-
-    }
+    main()

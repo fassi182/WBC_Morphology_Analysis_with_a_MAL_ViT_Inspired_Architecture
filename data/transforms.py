@@ -1,48 +1,82 @@
 """
 transforms.py
 
-Image preprocessing and augmentation for the WBCAtt dataset.
+Image preprocessing and augmentation for WBCAtt.
 
-This module defines image transformations for:
-1. Training
-2. Validation
-3. Testing
+Three pipelines are provided:
 
+    train_transform
+    val_transform
+    test_transform
 
+Training:
+    Resize
+    Horizontal Flip
+    Rotation
+    Color Jitter
+    Normalize
+
+Validation/Test:
+    Resize
+    Normalize
 """
 
 from torchvision import transforms
-
-# ==========================================================
-# ImageNet Normalization
-# ==========================================================
-# Since MAL-ViT is based on Vision Transformers that are
-# pretrained on ImageNet, we use the same normalization.
+from torchvision.transforms import InterpolationMode
 
 from config import (
     IMAGE_SIZE,
     IMAGENET_MEAN,
     IMAGENET_STD,
+    TRAIN_RANDOM_HORIZONTAL_FLIP,
+    TRAIN_RANDOM_ROTATION,
 )
-# ==========================================================
-# Input Image Size
-# ==========================================================
-# ViT models commonly use 224x224 input images.
 
 
-
-# ==========================================================
-# Training Transform
-# ==========================================================
-# Includes data augmentation to improve generalization.
+# ============================================================
+# TRAINING TRANSFORM
+# ============================================================
 
 train_transform = transforms.Compose([
 
-    transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+    # --------------------------------------------------------
+    # Resize
+    # --------------------------------------------------------
 
-    transforms.RandomHorizontalFlip(p=0.5),
+    transforms.Resize(
+        (
+            IMAGE_SIZE,
+            IMAGE_SIZE,
+        ),
+        interpolation=InterpolationMode.BICUBIC,
+    ),
 
-    transforms.RandomRotation(degrees=15),
+    # --------------------------------------------------------
+    # Horizontal flip
+    # --------------------------------------------------------
+
+    transforms.RandomHorizontalFlip(
+        p=0.5
+        if TRAIN_RANDOM_HORIZONTAL_FLIP
+        else 0.0
+    ),
+
+    # --------------------------------------------------------
+    # Rotation
+    # --------------------------------------------------------
+
+    transforms.RandomRotation(
+        degrees=TRAIN_RANDOM_ROTATION
+    ),
+
+    # --------------------------------------------------------
+    # Mild color augmentation
+    # --------------------------------------------------------
+    #
+    # Important for microscopy images:
+    # keep augmentation relatively conservative so that
+    # morphology/color information is not destroyed.
+    #
 
     transforms.ColorJitter(
         brightness=0.15,
@@ -51,7 +85,15 @@ train_transform = transforms.Compose([
         hue=0.02,
     ),
 
+    # --------------------------------------------------------
+    # Convert PIL -> Tensor
+    # --------------------------------------------------------
+
     transforms.ToTensor(),
+
+    # --------------------------------------------------------
+    # ImageNet normalization
+    # --------------------------------------------------------
 
     transforms.Normalize(
         mean=IMAGENET_MEAN,
@@ -60,15 +102,19 @@ train_transform = transforms.Compose([
 ])
 
 
-# ==========================================================
-# Validation Transform
-# ==========================================================
-# No random augmentation.
-# We only resize and normalize.
+# ============================================================
+# VALIDATION TRANSFORM
+# ============================================================
 
 val_transform = transforms.Compose([
 
-    transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+    transforms.Resize(
+        (
+            IMAGE_SIZE,
+            IMAGE_SIZE,
+        ),
+        interpolation=InterpolationMode.BICUBIC,
+    ),
 
     transforms.ToTensor(),
 
@@ -79,13 +125,19 @@ val_transform = transforms.Compose([
 ])
 
 
-# ==========================================================
-# Test Transform
-# ==========================================================
+# ============================================================
+# TEST TRANSFORM
+# ============================================================
 
 test_transform = transforms.Compose([
 
-    transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+    transforms.Resize(
+        (
+            IMAGE_SIZE,
+            IMAGE_SIZE,
+        ),
+        interpolation=InterpolationMode.BICUBIC,
+    ),
 
     transforms.ToTensor(),
 
@@ -96,54 +148,96 @@ test_transform = transforms.Compose([
 ])
 
 
-# ==========================================================
-# Utility Function
-# ==========================================================
+# ============================================================
+# TRANSFORM SELECTOR
+# ============================================================
 
-def get_transforms(split: str):
+def get_transforms(
+    split: str,
+):
     """
-    Returns the appropriate transform for the dataset split.
+    Return the correct transformation pipeline.
 
-    Args:
-        split (str): "train", "val", or "test"
+    Parameters
+    ----------
+    split : str
+        One of:
+            "train"
+            "val"
+            "test"
 
-    Returns:
-        torchvision.transforms.Compose
+    Returns
+    -------
+    torchvision.transforms.Compose
     """
 
-    split = split.lower()
+    split = split.strip().lower()
 
     if split == "train":
+
         return train_transform
 
-    elif split == "val":
+    elif split in (
+        "val",
+        "validation",
+    ):
+
         return val_transform
 
     elif split == "test":
+
         return test_transform
 
     else:
+
         raise ValueError(
             f"Unknown split '{split}'. "
-            "Expected one of ['train', 'val', 'test']"
+            f"Expected 'train', 'val', or 'test'."
         )
 
 
-# ==========================================================
-# Quick Test
-# ==========================================================
+# ============================================================
+# QUICK TEST
+# ============================================================
 
 if __name__ == "__main__":
 
-    print("=" * 60)
+    print("=" * 70)
     print("WBCAtt Transform Pipeline")
-    print("=" * 60)
+    print("=" * 70)
 
-    print("\nTraining Transform:\n")
+    print(
+        f"\nImage size       : "
+        f"{IMAGE_SIZE} x {IMAGE_SIZE}"
+    )
+
+    print(
+        f"ImageNet mean    : "
+        f"{IMAGENET_MEAN}"
+    )
+
+    print(
+        f"ImageNet std     : "
+        f"{IMAGENET_STD}"
+    )
+
+    print("\nTraining Transform:")
     print(train_transform)
 
-    print("\nValidation Transform:\n")
+    print("\nValidation Transform:")
     print(val_transform)
 
-    print("\nTesting Transform:\n")
+    print("\nTest Transform:")
     print(test_transform)
+
+    print("\nTransform validation:")
+
+    assert get_transforms("train") is train_transform
+
+    assert get_transforms("val") is val_transform
+
+    assert get_transforms("validation") is val_transform
+
+    assert get_transforms("test") is test_transform
+
+    print("PASSED")

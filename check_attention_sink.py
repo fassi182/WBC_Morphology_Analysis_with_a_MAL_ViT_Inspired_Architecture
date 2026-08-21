@@ -81,11 +81,15 @@ from data.encoders import ATTRIBUTE_NAMES
 from models.complete_model import ExplainableWBCModel
 
 
-ATTRIBUTE_COUNT = len(ATTRIBUTE_NAMES)
+
 IMAGE_SIZE = 224
 PATCH_SIZE = 16
 NUM_PATCHES_SIDE = IMAGE_SIZE // PATCH_SIZE
 
+ATTRIBUTE_COUNT = 11
+REGISTER_COUNT = 4
+
+PATCH_START = ATTRIBUTE_COUNT + REGISTER_COUNT
 
 # ==========================================================
 # Load Model

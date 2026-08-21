@@ -1,57 +1,81 @@
-"""
-dataloader.py
+# data/dataloader.py
 
-Creates PyTorch DataLoaders for the WBCAtt dataset.
-
-
-"""
+import torch
 
 from torch.utils.data import DataLoader
 
+from config import (
+    TRAIN_CSV,
+    VAL_CSV,
+    TEST_CSV,
+    DATASET_ROOT,
+    BATCH_SIZE,
+    NUM_WORKERS,
+)
+
 from data.dataset import WBCDataset
+
 from data.transforms import (
     train_transform,
     val_transform,
     test_transform,
 )
 
-# ==========================================================
-# Dataset Paths
-# ==========================================================
 
-from config import (
-    DATASET_ROOT,
-    TRAIN_CSV,
-    VAL_CSV,
-    TEST_CSV,
-    BATCH_SIZE,
-    NUM_WORKERS,
-    PIN_MEMORY,
-)
 # ==========================================================
-# DataLoader Factory
+# Collate Function
 # ==========================================================
 
-def create_dataloaders(
-    batch_size: int = BATCH_SIZE,
-    num_workers: int = NUM_WORKERS,
-):
-    """
-    Create training, validation and testing dataloaders.
+def wbca_collate_fn(batch):
 
-    Parameters
-    ----------
-    batch_size : int
-        Number of images per batch.
+    images = torch.stack(
+        [
+            sample["image"]
+            for sample in batch
+        ]
+    )
 
-    num_workers : int
-        Number of worker processes.
+    labels = torch.stack(
+        [
+            sample["cell_label"]
+            for sample in batch
+        ]
+    )
 
-    Returns
-    -------
-    tuple
-        train_loader, val_loader, test_loader
-    """
+    attributes = torch.stack(
+        [
+            sample["attributes"]
+            for sample in batch
+        ]
+    )
+
+    return {
+        "images": images,
+        "labels": labels,
+        "attributes": attributes,
+
+        "indices": [
+            sample["index"]
+            for sample in batch
+        ],
+
+        "image_names": [
+            sample["image_name"]
+            for sample in batch
+        ],
+
+        "image_paths": [
+            sample["image_path"]
+            for sample in batch
+        ],
+    }
+
+
+# ==========================================================
+# Create DataLoaders
+# ==========================================================
+
+def create_dataloaders():
 
     train_dataset = WBCDataset(
         annotation_file=TRAIN_CSV,
@@ -73,29 +97,36 @@ def create_dataloaders(
 
     train_loader = DataLoader(
         train_dataset,
-        batch_size=batch_size,
+        batch_size=BATCH_SIZE,
         shuffle=True,
-        num_workers=num_workers,
-        pin_memory=PIN_MEMORY,
+        num_workers=NUM_WORKERS,
+        pin_memory=torch.cuda.is_available(),
+        collate_fn=wbca_collate_fn,
     )
 
     val_loader = DataLoader(
         val_dataset,
-        batch_size=batch_size,
+        batch_size=BATCH_SIZE,
         shuffle=False,
-        num_workers=num_workers,
-        pin_memory=True,
+        num_workers=NUM_WORKERS,
+        pin_memory=torch.cuda.is_available(),
+        collate_fn=wbca_collate_fn,
     )
 
     test_loader = DataLoader(
         test_dataset,
-        batch_size=batch_size,
+        batch_size=BATCH_SIZE,
         shuffle=False,
-        num_workers=num_workers,
-        pin_memory=True,
+        num_workers=NUM_WORKERS,
+        pin_memory=torch.cuda.is_available(),
+        collate_fn=wbca_collate_fn,
     )
 
-    return train_loader, val_loader, test_loader
+    return (
+        train_loader,
+        val_loader,
+        test_loader,
+    )
 
 
 # ==========================================================
@@ -104,36 +135,91 @@ def create_dataloaders(
 
 if __name__ == "__main__":
 
-    train_loader, val_loader, test_loader = create_dataloaders(
-        batch_size=8
+    print("=" * 70)
+    print("WBCAtt DataLoader Test")
+    print("=" * 70)
+
+    (
+        train_loader,
+        val_loader,
+        test_loader,
+    ) = create_dataloaders()
+
+    print("\nDataset sizes:")
+
+    print(
+        f"Train: {len(train_loader.dataset)}"
     )
 
-    print("=" * 60)
-    print("WBCAtt DataLoader Test")
-    print("=" * 60)
+    print(
+        f"Val  : {len(val_loader.dataset)}"
+    )
 
-    print(f"Training batches   : {len(train_loader)}")
-    print(f"Validation batches : {len(val_loader)}")
-    print(f"Testing batches    : {len(test_loader)}")
+    print(
+        f"Test : {len(test_loader.dataset)}"
+    )
 
-    print("\nLoading one batch...\n")
+    print("\nNumber of batches:")
 
-    batch = next(iter(train_loader))
+    print(
+        f"Train: {len(train_loader)}"
+    )
 
-    print("Batch Keys")
-    print(batch.keys())
+    print(
+        f"Val  : {len(val_loader)}"
+    )
 
-    print("\nImage Batch Shape")
-    print(batch["image"].shape)
+    print(
+        f"Test : {len(test_loader)}"
+    )
 
-    print("\nCell Labels Shape")
-    print(batch["cell_label"].shape)
+    batch = next(
+        iter(train_loader)
+    )
 
-    print("\nAttribute Tensor Shape")
-    print(batch["attributes"].shape)
+    print("\nFirst training batch:")
 
-    print("\nImage Names")
-    print(batch["image_name"][:3])
+    print(
+        "Images:",
+        batch["images"].shape
+    )
 
-    print("\nDataset Indices")
-    print(batch["index"][:3])
+    print(
+        "WBC labels:",
+        batch["labels"].shape
+    )
+
+    print(
+        "Attributes:",
+        batch["attributes"].shape
+    )
+
+    # ------------------------------------------------------
+    # Validation
+    # ------------------------------------------------------
+
+    assert batch["images"].shape == (
+        BATCH_SIZE,
+        3,
+        224,
+        224,
+    )
+
+    assert batch["labels"].shape == (
+        BATCH_SIZE,
+    )
+
+    assert batch["attributes"].shape == (
+        BATCH_SIZE,
+        11,
+    )
+
+    assert batch["images"].dtype == torch.float32
+    assert batch["labels"].dtype == torch.long
+    assert batch["attributes"].dtype == torch.long
+
+    print(
+        "\nDataLoader validation: PASSED"
+    )
+
+    print("=" * 70)

@@ -1,131 +1,135 @@
 """
 checkpoint.py
 
-Utilities for saving and loading training checkpoints.
-
+Save and load MAL-ViT checkpoints.
 """
 
-from pathlib import Path
 import torch
 
-from config import CHECKPOINT_DIR
-
-
-# ==========================================================
-# Save Checkpoint
-# ==========================================================
 
 def save_checkpoint(
-    checkpoint: dict,
-    save_path,
+    path,
+    model,
+    optimizer=None,
+    scheduler=None,
+    epoch=0,
+    metric=None,
 ):
-    """
-    Save checkpoint dictionary.
-
-    Parameters
-    ----------
-    checkpoint : dict
-        Complete training state.
-
-    save_path : Path
-        Output checkpoint path.
-    """
-
-    save_path = Path(save_path)
-
-    save_path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    torch.save(
-        checkpoint,
-        save_path,
-    )
-
-    print("=" * 60)
-    print("Checkpoint Saved")
-    print("=" * 60)
-    print(f"Path : {save_path}")
-
-
-# ==========================================================
-# Load Checkpoint
-# ==========================================================
-
-def load_checkpoint(load_path):
-    """
-    Load checkpoint dictionary.
-
-    Parameters
-    ----------
-    load_path : Path
-
-    Returns
-    -------
-    dict
-    """
-
-    load_path = Path(load_path)
-
-    if not load_path.exists():
-
-        raise FileNotFoundError(
-            f"Checkpoint not found:\n{load_path}"
-        )
-
-    checkpoint = torch.load(
-        load_path,
-        map_location="cpu",
-    )
-
-    print("=" * 60)
-    print("Checkpoint Loaded")
-    print("=" * 60)
-    print(f"Path : {load_path}")
-
-    return checkpoint
-
-
-# ==========================================================
-# Quick Test
-# ==========================================================
-
-if __name__ == "__main__":
 
     checkpoint = {
 
-        "epoch": 10,
+        "epoch": epoch,
 
-        "best_loss": 0.73,
+        "model_state_dict":
+            model.state_dict(),
 
-        "history": {
-
-            "train_loss": [1.2, 0.9],
-
-            "val_loss": [1.0, 0.8],
-
-        },
-
+        "metric": metric,
     }
 
-    path = CHECKPOINT_DIR / "test_checkpoint.pth"
+    if optimizer is not None:
 
-    save_checkpoint(
+        checkpoint[
+            "optimizer_state_dict"
+        ] = optimizer.state_dict()
+
+    if scheduler is not None:
+
+        checkpoint[
+            "scheduler_state_dict"
+        ] = scheduler.state_dict()
+
+    torch.save(
         checkpoint,
         path,
     )
 
-    loaded = load_checkpoint(path)
 
-    print("\nLoaded Keys")
+def load_checkpoint(
+    path,
+    model,
+    optimizer=None,
+    scheduler=None,
+    map_location="cpu",
+):
 
-    print(loaded.keys())
+    checkpoint = torch.load(
+        path,
+        map_location=map_location,
+    )
 
-    print("\nEpoch")
+    model.load_state_dict(
+        checkpoint[
+            "model_state_dict"
+        ]
+    )
 
-    print(loaded["epoch"])
+    if (
+        optimizer is not None
+        and "optimizer_state_dict"
+        in checkpoint
+    ):
 
-    print("\nBest Loss")
+        optimizer.load_state_dict(
+            checkpoint[
+                "optimizer_state_dict"
+            ]
+        )
 
-    print(loaded["best_loss"])
+    if (
+        scheduler is not None
+        and "scheduler_state_dict"
+        in checkpoint
+    ):
+
+        scheduler.load_state_dict(
+            checkpoint[
+                "scheduler_state_dict"
+            ]
+        )
+
+    return checkpoint
+
+
+if __name__ == "__main__":
+
+    print("=" * 60)
+    print("Checkpoint Utility Test")
+    print("=" * 60)
+
+    model = torch.nn.Linear(
+        10,
+        2,
+    )
+
+    path = "test_checkpoint.pth"
+
+    save_checkpoint(
+        path=path,
+        model=model,
+        epoch=1,
+        metric=0.5,
+    )
+
+    new_model = torch.nn.Linear(
+        10,
+        2,
+    )
+
+    checkpoint = load_checkpoint(
+        path=path,
+        model=new_model,
+    )
+
+    print(
+        "Loaded epoch:",
+        checkpoint["epoch"],
+    )
+
+    print(
+        "Loaded metric:",
+        checkpoint["metric"],
+    )
+
+    print(
+        "\nCheckpoint validation: PASSED"
+    )
