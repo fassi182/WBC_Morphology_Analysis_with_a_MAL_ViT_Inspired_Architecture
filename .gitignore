@@ -11,15 +11,9 @@ venv/
 .venv/
 env/
 
-# Training outputs
-outputs/*
-!outputs/checkpoints/
-!outputs/checkpoints/.gitkeep
 
-# Model checkpoints
-*.pth
-*.pt
-*.ckpt
+
+
 
 # Logs
 *.log
