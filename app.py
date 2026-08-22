@@ -1,443 +1,602 @@
 """
-Streamlit App
--------------
+app.py
 
-Explainable WBC Morphology Analysis using MAL-ViT.
+Streamlit UI for MAL-ViT WBC Morphology Analysis.
 
-Features
+Pipeline
 --------
-1. Upload WBC image
-2. Capture image using camera
-3. Select sample image from images/
-4. Predict WBC type
-5. Predict 11 morphology attributes
-6. Generate Grad-CAM for every morphology attribute
-7. View individual attribute explanations
-8. View all 11 Grad-CAM explanations
-
-Run:
-    streamlit run app.py
+Upload Image
+    ↓
+MAL-ViT
+    ↓
+WBC Prediction
+    ↓
+11 Morphology Predictions
+    ↓
+Attribute-Level XAI
+    ├── Grad-CAM-style attribution
+    ├── Attention map
+    └── Gradient map
 """
 
 from pathlib import Path
-import tempfile
 
 import streamlit as st
+import numpy as np
+
 from PIL import Image
 
-from inference import predict
-from utils.xai.vit_grad_cam import generate_all_attribute_cams
+from data.encoders import ATTRIBUTE_NAMES
+
+from utils.xai.vit_grad_cam import (
+    generate_explanations,
+    colorize_heatmap,
+    resize_heatmap,
+)
 
 
-# ==========================================================
-# Page Config
-# ==========================================================
+# ============================================================
+# PAGE CONFIGURATION
+# ============================================================
 
 st.set_page_config(
-    page_title="WBC Morphology Analysis with MAL-ViT",
-    page_icon="🩸",
+    page_title="MAL-ViT WBC Analysis",
+    page_icon="🔬",
     layout="wide",
 )
 
 
-# ==========================================================
-# Title
-# ==========================================================
+# ============================================================
+# CUSTOM CSS
+# ============================================================
 
-st.title(
-    "🩸 WBC Morphology Analysis "
-    "with a MAL-ViT Inspired Architecture"
+st.markdown(
+    """
+    <style>
+
+    .main-title {
+        font-size: 36px;
+        font-weight: 700;
+        margin-bottom: 5px;
+    }
+
+    .subtitle {
+        font-size: 17px;
+        color: #777777;
+        margin-bottom: 25px;
+    }
+
+    .prediction-box {
+        padding: 20px;
+        border-radius: 12px;
+        background-color: #f5f7fa;
+        border: 1px solid #dddddd;
+        margin-bottom: 20px;
+    }
+
+    .attribute-title {
+        font-size: 20px;
+        font-weight: 600;
+        margin-top: 15px;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
-st.write(
-    "Predict White Blood Cell type and 11 morphology "
-    "attributes with attribute-level Grad-CAM explanations."
+
+# ============================================================
+# HEADER
+# ============================================================
+
+st.markdown(
+    '<div class="main-title">MAL-ViT WBC Morphology Analysis</div>',
+    unsafe_allow_html=True,
 )
 
-st.divider()
-
-
-# ==========================================================
-# Image Source
-# ==========================================================
-
-option = st.radio(
-    "Choose Image Source",
-    (
-        "📂 Upload Image",
-        "📷 Camera",
-        "🖼 Sample Images",
-    ),
-    horizontal=True,
+st.markdown(
+    '<div class="subtitle">'
+    "White Blood Cell Classification, Morphology Prediction "
+    "and Attribute-Level Explainability"
+    "</div>",
+    unsafe_allow_html=True,
 )
 
-image = None
-image_name = None
 
+# ============================================================
+# SIDEBAR
+# ============================================================
 
-# ==========================================================
-# Upload Image
-# ==========================================================
+with st.sidebar:
 
-if option == "📂 Upload Image":
+    st.header("About MAL-ViT")
 
-    uploaded = st.file_uploader(
-        "Upload a WBC Image",
-        type=["jpg", "jpeg", "png"],
+    st.write(
+        """
+        This system uses MAL-ViT to analyze white blood cell
+        morphology through multiple attribute-specific tokens.
+        """
     )
-
-    if uploaded is not None:
-
-        image = Image.open(
-            uploaded
-        ).convert("RGB")
-
-        image_name = uploaded.name
-
-
-# ==========================================================
-# Camera
-# ==========================================================
-
-elif option == "📷 Camera":
-
-    captured = st.camera_input(
-        "Take a Picture"
-    )
-
-    if captured is not None:
-
-        image = Image.open(
-            captured
-        ).convert("RGB")
-
-        image_name = "camera_image.jpg"
-
-
-# ==========================================================
-# Sample Images
-# ==========================================================
-
-else:
-
-    image_folder = Path("images")
-
-    if not image_folder.exists():
-
-        st.error(
-            "images/ folder not found."
-        )
-
-    else:
-
-        image_files = sorted(
-            [
-                p.name
-                for p in image_folder.iterdir()
-                if p.suffix.lower()
-                in [".jpg", ".jpeg", ".png"]
-            ]
-        )
-
-        if len(image_files) == 0:
-
-            st.warning(
-                "No sample images found."
-            )
-
-        else:
-
-            selected = st.selectbox(
-                "Select Sample Image",
-                image_files,
-            )
-
-            image = Image.open(
-                image_folder / selected
-            ).convert("RGB")
-
-            image_name = selected
-
-
-# ==========================================================
-# Prediction
-# ==========================================================
-
-if image is not None:
 
     st.divider()
 
-    # ------------------------------------------------------
-    # Display Input Image
-    # ------------------------------------------------------
+    st.write("### Model")
 
-    col1, col2 = st.columns(
-        [1, 1]
+    st.write("• Vision Transformer")
+    st.write("• 11 morphology attributes")
+    st.write("• 4 register tokens")
+    st.write("• 196 image patch tokens")
+    st.write("• 6 transformer blocks")
+    st.write("• 6 attention heads")
+
+    st.divider()
+
+    st.write("### Explainability")
+
+    st.write("• Attribute Grad-CAM")
+    st.write("• Attribute Attention")
+    st.write("• Gradient Attribution")
+
+
+# ============================================================
+# IMAGE UPLOAD
+# ============================================================
+
+st.header("Upload WBC Image")
+
+uploaded_file = st.file_uploader(
+    "Choose a WBC image",
+    type=[
+        "jpg",
+        "jpeg",
+        "png",
+    ],
+)
+
+
+# ============================================================
+# STOP IF NO IMAGE
+# ============================================================
+
+if uploaded_file is None:
+
+    st.info(
+        "Upload a WBC microscopy image to begin the analysis."
     )
 
-    with col1:
+    st.stop()
+
+
+# ============================================================
+# LOAD IMAGE
+# ============================================================
+
+try:
+
+    image = Image.open(
+        uploaded_file
+    ).convert("RGB")
+
+except Exception:
+
+    st.error(
+        "The uploaded file could not be read as an image."
+    )
+
+    st.stop()
+
+
+# ============================================================
+# DISPLAY INPUT IMAGE
+# ============================================================
+
+st.header("Input Image")
+
+image_column, info_column = st.columns(
+    [1, 1]
+)
+
+with image_column:
+
+    st.image(
+        image,
+        caption="Uploaded WBC Image",
+        use_container_width=True,
+    )
+
+with info_column:
+
+    st.write("### Image Information")
+
+    st.write(
+        f"**Filename:** {uploaded_file.name}"
+    )
+
+    st.write(
+        f"**Image size:** {image.width} × {image.height}"
+    )
+
+    st.write(
+        f"**Format:** {image.format or 'RGB image'}"
+    )
+
+
+# ============================================================
+# ANALYZE BUTTON
+# ============================================================
+
+st.divider()
+
+analyze = st.button(
+    "🔬 Analyze WBC",
+    type="primary",
+    use_container_width=True,
+)
+
+
+# ============================================================
+# ANALYSIS
+# ============================================================
+
+if analyze:
+
+    # --------------------------------------------------------
+    # Progress
+    # --------------------------------------------------------
+
+    progress = st.progress(
+        0
+    )
+
+    status = st.empty()
+
+    # --------------------------------------------------------
+    # Generate predictions + XAI
+    # --------------------------------------------------------
+
+    try:
+
+        status.write(
+            "Loading MAL-ViT and generating predictions..."
+        )
+
+        progress.progress(
+            10
+        )
+
+        results = generate_explanations(
+            image
+        )
+
+        progress.progress(
+            100
+        )
+
+        status.success(
+            "Analysis completed successfully."
+        )
+
+    except Exception as error:
+
+        progress.empty()
+
+        status.empty()
+
+        st.error(
+            "Analysis failed."
+        )
+
+        st.write(
+            "Please check the PowerShell terminal running "
+            "Streamlit for the detailed error."
+        )
+
+        st.stop()
+
+
+    # ========================================================
+    # WBC PREDICTION
+    # ========================================================
+
+    st.divider()
+
+    st.header("WBC Classification")
+
+    wbc_column, index_column = st.columns(
+        [2, 1]
+    )
+
+    with wbc_column:
+
+        st.markdown(
+            '<div class="prediction-box">',
+            unsafe_allow_html=True,
+        )
 
         st.subheader(
-            "🔬 Input Image"
-        )
-
-        st.image(
-            image,
-            use_container_width=True,
-        )
-
-        if image_name:
-            st.caption(
-                f"Image: {image_name}"
-            )
-
-    # ------------------------------------------------------
-    # Save temporary image
-    # ------------------------------------------------------
-
-    with tempfile.NamedTemporaryFile(
-        suffix=".jpg",
-        delete=False,
-    ) as temp:
-
-        image.save(
-            temp.name
-        )
-
-        temp_path = temp.name
-
-    # ------------------------------------------------------
-    # Run Prediction
-    # ------------------------------------------------------
-
-    with st.spinner(
-        "Analyzing WBC morphology..."
-    ):
-
-        cell, attributes = predict(
-            temp_path
-        )
-
-    # ------------------------------------------------------
-    # Prediction Results
-    # ------------------------------------------------------
-
-    with col2:
-
-        st.subheader(
-            "🩸 WBC Prediction"
+            "Predicted WBC Type"
         )
 
         st.success(
-            f"### {cell.upper()}"
+            results["wbc"].replace(
+                "_",
+                " ",
+            ).title()
         )
 
-        st.markdown("---")
-
-        st.subheader(
-            "🔬 Morphology Attributes"
+        st.markdown(
+            "</div>",
+            unsafe_allow_html=True,
         )
 
-        for key, value in attributes.items():
+    with index_column:
 
-            st.write(
-                f"**{key.replace('_', ' ').title()}** : "
-                f"{value}"
-            )
+        st.metric(
+            "Class Index",
+            results["wbc_index"],
+        )
 
 
-    # ======================================================
-    # Grad-CAM
-    # ======================================================
+    # ========================================================
+    # MORPHOLOGY PREDICTIONS
+    # ========================================================
 
     st.divider()
 
     st.header(
-        "🔥 Attribute-Level Explainability"
+        "Morphology Predictions"
+    )
+
+    attributes = results[
+        "attributes"
+    ]
+
+    # --------------------------------------------------------
+    # Display attributes in two columns
+    # --------------------------------------------------------
+
+    attribute_items = list(
+        attributes.items()
+    )
+
+    left_column, right_column = st.columns(
+        2
+    )
+
+    for index, (
+        attribute_name,
+        predicted_value,
+    ) in enumerate(
+        attribute_items
+    ):
+
+        if index % 2 == 0:
+
+            column = left_column
+
+        else:
+
+            column = right_column
+
+        with column:
+
+            st.markdown(
+                '<div class="prediction-box">',
+                unsafe_allow_html=True,
+            )
+
+            st.write(
+                f"**{attribute_name.replace('_', ' ').title()}**"
+            )
+
+            st.success(
+                str(
+                    predicted_value
+                ).replace(
+                    "_",
+                    " ",
+                ).title()
+            )
+
+            st.markdown(
+                "</div>",
+                unsafe_allow_html=True,
+            )
+
+
+    # ========================================================
+    # XAI SECTION
+    # ========================================================
+
+    st.divider()
+
+    st.header(
+        "Attribute-Level Explainability"
     )
 
     st.write(
-        "Each Grad-CAM highlights image regions that "
-        "contribute to the prediction of a specific "
-        "morphology attribute."
-    )
-
-
-    # ------------------------------------------------------
-    # Generate Grad-CAMs
-    # ------------------------------------------------------
-
-    with st.spinner(
-        "Generating 11 attribute Grad-CAM explanations..."
-    ):
-
-        cam_results = (
-            generate_all_attribute_cams(
-                temp_path
-            )
-        )
-
-
-    st.success(
-        f"Generated {len(cam_results)} attribute explanations."
-    )
-
-
-    # ======================================================
-    # Individual Attribute Explanation
-    # ======================================================
-
-    st.subheader(
-        "🔎 Explore Individual Attribute"
-    )
-
-    attribute_names = list(
-        cam_results.keys()
-    )
-
-    selected_attribute = st.selectbox(
-        "Select morphology attribute",
-        attribute_names,
-    )
-
-
-    selected_result = cam_results[
-        selected_attribute
-    ]
-
-
-    # ------------------------------------------------------
-    # Selected Attribute Information
-    # ------------------------------------------------------
-
-    selected_prediction = attributes[
-        selected_attribute
-    ]
-
-    st.markdown(
-        f"""
-        ### {selected_attribute.replace('_', ' ').title()}
-
-        **Predicted value:** `{selected_prediction}`
+        """
+        Each morphology attribute has its own explanation.
+        The Grad-CAM-style map combines the attribute-token
+        attention with gradient information from the selected
+        attribute prediction.
         """
     )
 
 
-    # ------------------------------------------------------
-    # Selected CAM
-    # ------------------------------------------------------
+    # ========================================================
+    # ATTRIBUTE XAI
+    # ========================================================
 
-    cam_col1, cam_col2 = st.columns(
-        [1, 1]
-    )
-
-
-    with cam_col1:
-
-        st.image(
-            image,
-            caption="Original Image",
-            use_container_width=True,
-        )
+    cams = results[
+        "cams"
+    ]
 
 
-    with cam_col2:
+    for attribute_name in ATTRIBUTE_NAMES:
 
-        st.image(
-            selected_result["overlay"],
-            caption=(
-                f"Grad-CAM — "
-                f"{selected_attribute.replace('_', ' ').title()}"
-            ),
-            use_container_width=True,
-        )
+        if attribute_name not in cams:
 
+            continue
 
-    # ======================================================
-    # All Attribute Grad-CAMs
-    # ======================================================
-
-    st.divider()
-
-    st.subheader(
-        "🧠 All 11 Attribute Explanations"
-    )
-
-    st.write(
-        "Each panel shows which image regions are "
-        "most influential for the corresponding "
-        "morphology prediction."
-    )
-
-
-    # ------------------------------------------------------
-    # Display CAMs in rows of 3
-    # ------------------------------------------------------
-
-    for start in range(
-        0,
-        len(attribute_names),
-        3,
-    ):
-
-        row_attributes = attribute_names[
-            start:start + 3
+        result = cams[
+            attribute_name
         ]
 
-        columns = st.columns(
-            len(row_attributes)
+        predicted_class = result[
+            "predicted_class"
+        ]
+
+        # ----------------------------------------------------
+        # Attribute heading
+        # ----------------------------------------------------
+
+        st.subheader(
+            attribute_name
+            .replace(
+                "_",
+                " ",
+            )
+            .title()
         )
 
-        for column, attribute_name in zip(
-            columns,
-            row_attributes,
+        st.write(
+            f"Predicted value: **"
+            f"{str(predicted_class).replace('_', ' ').title()}"
+            f"**"
+        )
+
+
+        # ====================================================
+        # PREPARE XAI MAPS
+        # ====================================================
+
+        gradcam_image = result[
+            "overlay"
+        ]
+
+        attention_map = result[
+            "attention_map"
+        ]
+
+        gradient_map = result[
+            "gradient_map"
+        ]
+
+
+        # ----------------------------------------------------
+        # Resize attention map
+        # ----------------------------------------------------
+
+        attention_resized = resize_heatmap(
+            attention_map,
+            image.size,
+        )
+
+        attention_rgb = colorize_heatmap(
+            attention_resized
+        )
+
+        attention_image = Image.fromarray(
+            attention_rgb
+        )
+
+
+        # ----------------------------------------------------
+        # Resize gradient map
+        # ----------------------------------------------------
+
+        gradient_resized = resize_heatmap(
+            gradient_map,
+            image.size,
+        )
+
+        gradient_rgb = colorize_heatmap(
+            gradient_resized
+        )
+
+        gradient_image = Image.fromarray(
+            gradient_rgb
+        )
+
+
+        # ====================================================
+        # DISPLAY XAI
+        # ====================================================
+
+        col1, col2, col3 = st.columns(
+            3
+        )
+
+        # ----------------------------------------------------
+        # Grad-CAM
+        # ----------------------------------------------------
+
+        with col1:
+
+            st.image(
+                gradcam_image,
+                caption="Grad-CAM",
+                use_container_width=True,
+            )
+
+
+        # ----------------------------------------------------
+        # Attention
+        # ----------------------------------------------------
+
+        with col2:
+
+            st.image(
+                attention_image,
+                caption="Attribute Attention",
+                use_container_width=True,
+            )
+
+
+        # ----------------------------------------------------
+        # Gradient
+        # ----------------------------------------------------
+
+        with col3:
+
+            st.image(
+                gradient_image,
+                caption="Input Gradient",
+                use_container_width=True,
+            )
+
+
+        # ----------------------------------------------------
+        # Logits
+        # ----------------------------------------------------
+
+        with st.expander(
+            f"View {attribute_name} logits"
         ):
 
-            result = cam_results[
-                attribute_name
+            logits = result[
+                "logits"
             ]
 
-            prediction = attributes[
-                attribute_name
-            ]
-
-            with column:
-
-                st.markdown(
-                    f"**{attribute_name.replace('_', ' ').title()}**"
-                )
-
-                st.image(
-                    result["overlay"],
-                    use_container_width=True,
-                )
-
-                st.caption(
-                    f"Prediction: {prediction}"
-                )
+            st.write(
+                logits
+            )
 
 
-    # ======================================================
-    # Interpretation
-    # ======================================================
+        st.divider()
 
-    st.divider()
 
-    st.subheader(
-        "💡 Explanation"
-    )
+# ============================================================
+# FOOTER
+# ============================================================
 
-    st.write(
-        "The highlighted regions represent image patches "
-        "that contributed most strongly to the selected "
-        "attribute prediction. Different attributes can "
-        "focus on different morphological regions of the "
-        "same WBC image."
-    )
-
-    st.info(
-        "Grad-CAM provides a visual explanation of the "
-        "model's decision. It should be interpreted as "
-        "model attention/importance rather than a clinical "
-        "diagnosis."
-    )
+st.markdown(
+    """
+    <div style="text-align:center; color:#888888; padding:20px;">
+        MAL-ViT • WBC Morphology Analysis • Attribute-Level XAI
+    </div>
+    """,
+    unsafe_allow_html=True,
+)

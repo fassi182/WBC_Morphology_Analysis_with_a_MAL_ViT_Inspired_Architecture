@@ -1,520 +1,465 @@
 """
-vit_grad_cam.py
+utils/xai/vit_grad_cam.py
 
-Grad-CAM style explainability for MAL-ViT.
+MAL-ViT Attribute-Level Explainability
+--------------------------------------
 
-Generates one CAM for each morphology attribute.
+Generates attribute-specific spatial attribution maps for MAL-ViT.
 
-Pipeline
---------
-Image
-    ↓
-MAL-ViT
-    ↓
-Transformer Attention (attribute token → patch tokens)
-    ↓
-Target Attribute Logit
-    ↓
-Gradients w.r.t. Attention Weights
-    ↓
-Patch Importance
-    ↓
-14 × 14 CAM
-    ↓
-224 × 224 Heatmap
+The model contains:
 
-No changes are required to the trained model architecture.
+    11 attribute tokens
+    4 register tokens
+    196 image patch tokens
+    6 transformer blocks
+    6 attention heads
 
---------------------------------------------------------------------
-WHY THE OLD VERSION PRODUCED THE SAME MAP FOR EVERY ATTRIBUTE
---------------------------------------------------------------------
+Token layout:
 
-The previous implementation hooked the *output* of
-`transformer.blocks[-1]` (the last encoder block) and did classic
-Grad-CAM on it:
+    0  - 10   : attribute tokens
+    11 - 14   : register tokens
+    15 - 210  : image patch tokens
 
-    weight  = mean_over_channels( d(logit) / d(block_output) )
-    cam     = relu( sum_over_channels( block_output * weight ) )
+For each morphology attribute, this module:
 
-That output tensor has shape (B, 207, 192): 11 attribute-token rows
-followed by 196 patch-token rows.
+    1. Loads the trained MAL-ViT checkpoint.
+    2. Runs the input image through the model.
+    3. Selects the predicted class for the attribute.
+    4. Computes the gradient of that class logit.
+    5. Extracts attribute-token -> image-patch attention.
+    6. Produces an attention-only spatial map.
+    7. Produces a gradient-only spatial map.
+    8. Combines attention and gradient information.
+    9. Produces a combined Grad-CAM-style map.
+   10. Saves all three visualizations.
 
-Look at what happens *after* that block in `VisionTransformer.forward`:
-
-    for block in self.blocks:
-        x = block(x)
-    x = self.norm(x)          # <-- final LayerNorm
-
-`nn.LayerNorm` normalizes each token independently over the embedding
-dimension — it never mixes information *across* tokens. And in
-`MALViT.forward`, only the first 11 rows of the normalized output are
-ever used:
-
-    attribute_features = tokens[:, :NUM_ATTRIBUTE_TOKENS, :]
-    attribute_predictions = self.attribute_heads(attribute_features)
-
-The 196 patch-token rows of `blocks[-1]`'s output are therefore
-**never consumed by anything downstream of that block**. There is
-simply no path in the computational graph from those patch-token
-outputs to any attribute logit, so:
-
-    d(logit) / d(blocks[-1].output[patch_rows])  ==  0.0   (exactly)
-
-for *every* attribute, every class, every image. This was verified
-directly on this repo's model:
-
-    grad1 patch abs max/mean: 0.0 0.0
-    grad2 patch abs max/mean: 0.0 0.0
-
-That's why every attribute produced an (almost) identical, blob-like,
-un-differentiated heatmap — the "CAM" was really just noise from the
-zero/near-zero floor after normalization, not a real signal.
-
---------------------------------------------------------------------
-THE FIX
---------------------------------------------------------------------
-
-MAL-ViT doesn't have a convolutional feature map to run classic
-Grad-CAM on — it has attention. The thing that actually tells you
-"where did attribute token i look when producing its prediction" is
-the **self-attention matrix**: specifically, row `i` (the attribute
-token's query) against the 196 patch-token columns (keys), in the
-block(s) where that attention is computed.
-
-Each attribute token has its *own* learned query vector, so its
-attention row over the patches is naturally different from every
-other attribute token's row — this is exactly the per-attribute
-localization signal we want.
-
-To make it class/attribute-*discriminative* (not just "where does
-this token attend on average", which attention alone doesn't
-capture), we weight the attention weights by their gradient w.r.t.
-the target attribute logit — the standard "Gradient × Attention"
-idea used in transformer explainability methods:
-
-    attention  = softmax(QK^T / sqrt(d))      # captured pre-dropout
-    grad       = d(logit) / d(attention)
-    relevance  = relu(attention * grad)       # per head
-    cam        = mean over heads, over the last K blocks
-
-This is captured with a forward hook on `attention.attention_dropout`
-in each target block — its *input* is exactly the post-softmax,
-pre-dropout attention matrix, so no changes to the model's source
-files are needed, and gradients can be retained on it because it is
-still a live intermediate tensor in the graph.
+This is a ViT-specific attribution method rather than
+conventional CNN Grad-CAM.
 """
 
 from pathlib import Path
 
-import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
+
 from PIL import Image
-
-
-import sys
-from pathlib import Path
-# Adds the project root directory to sys.path
-root_dir = Path(__file__).resolve().parent.parent.parent
-sys.path.append(str(root_dir))
 
 from config import (
     DEVICE,
-    CHECKPOINT_DIR,
-    BEST_MODEL_NAME,
-)
-
-from data.transforms import test_transform
-
-from data.encoders import (
+    BEST_MODEL_PATH,
+    IMAGE_SIZE,
+    NUM_PATCHES,
+    NUM_ATTRIBUTE_TOKENS,
+    NUM_REGISTER_TOKENS,
     ATTRIBUTE_NAMES,
 )
 
-from models.complete_model import ExplainableWBCModel
+from models.complete_model import CompleteMALViT
 
-
-# ==========================================================
-# Configuration
-# ==========================================================
-ATTRIBUTE_COUNT = len(
-    ATTRIBUTE_NAMES
+from data.encoders import (
+    decode_wbc,
+    decode_attribute,
 )
 
-IMAGE_SIZE = 224
-PATCH_SIZE = 16
 
-NUM_PATCHES_SIDE = IMAGE_SIZE // PATCH_SIZE
-NUM_PATCHES = NUM_PATCHES_SIDE * NUM_PATCHES_SIDE
+# ============================================================
+# CONSTANTS
+# ============================================================
 
-# Number of final transformer blocks whose attention maps are
-# combined to build each attribute's CAM. Using more than one
-# smooths out single-layer noise while still keeping the map
-# attribute-specific (each layer still gets its own gradient
-# w.r.t. that attribute's logit).
-NUM_CAM_LAYERS = 4
+PATCH_GRID_SIZE = int(
+    NUM_PATCHES ** 0.5
+)
 
+ATTRIBUTE_TOKEN_START = 0
 
-# ==========================================================
-# Grad-CAM Class
-# ==========================================================
+REGISTER_TOKEN_START = (
+    NUM_ATTRIBUTE_TOKENS
+)
 
-class ViTGradCAM:
+PATCH_TOKEN_START = (
+    NUM_ATTRIBUTE_TOKENS
+    + NUM_REGISTER_TOKENS
+)
 
-    def __init__(self, model, num_layers=NUM_CAM_LAYERS):
 
-        self.model = model
+# ============================================================
+# MODEL LOADING
+# ============================================================
 
-        # --------------------------------------------------
-        # Target Blocks
-        # --------------------------------------------------
-        #
-        # Instead of the *output* of the last encoder block
-        # (which, as explained above, has zero gradient on the
-        # patch-token rows), we hook the *attention weights*
-        # inside the last `num_layers` encoder blocks.
-        #
-        # Each block's self-attention tensor has shape:
-        #
-        # (B, heads, 207, 207)
-        #
-        # Row i, columns [11:] give us: "how much did attribute
-        # token i attend to each of the 196 image patches".
-        #
-        # --------------------------------------------------
+_MODEL = None
 
-        all_blocks = self.model.mal_vit.transformer.blocks
-
-        num_layers = min(
-            num_layers,
-            len(all_blocks),
-        )
-
-        self.target_blocks = list(
-            all_blocks[-num_layers:]
-        )
-
-        self.attention_maps = [None] * len(self.target_blocks)
-
-        self.forward_handles = []
-
-        for idx, block in enumerate(self.target_blocks):
-
-            handle = (
-                block
-                .attention
-                .attention_dropout
-                .register_forward_hook(
-                    self._make_forward_hook(idx)
-                )
-            )
-
-            self.forward_handles.append(handle)
-
-    # ======================================================
-    # Forward Hook Factory
-    # ======================================================
-    #
-    # `attention_dropout` is applied directly to the softmax
-    # attention weights, before the weighted sum with V. Its
-    # *input* (not output) is therefore exactly the attention
-    # matrix we want, still connected to the autograd graph.
-    #
-    # ======================================================
-
-    def _make_forward_hook(self, idx):
-
-        def hook(module, inputs, output):
-
-            attention_weights = inputs[0]
-
-            if attention_weights.requires_grad:
-
-                attention_weights.retain_grad()
-
-            self.attention_maps[idx] = attention_weights
-
-        return hook
-
-    # ======================================================
-    # Generate CAM
-    # ======================================================
-
-    def generate(
-        self,
-        image,
-        attribute_name,
-        target_class=None,
-    ):
-
-        self.model.zero_grad(set_to_none=True)
-
-        self.attention_maps = [None] * len(self.target_blocks)
-
-        # --------------------------------------------------
-        # Forward
-        # --------------------------------------------------
-
-        outputs = self.model(image)
-
-        logits = outputs[
-            "attribute_predictions"
-        ][attribute_name]
-
-        # --------------------------------------------------
-        # Select Target Class
-        # --------------------------------------------------
-
-        if target_class is None:
-
-            target_class = logits.argmax(
-                dim=1
-            ).item()
-
-        target = logits[
-            0,
-            target_class
-        ]
-
-        # --------------------------------------------------
-        # Backward
-        # --------------------------------------------------
-
-        target.backward()
-
-        # --------------------------------------------------
-        # Check Attention Maps
-        # --------------------------------------------------
-
-        for attention_weights in self.attention_maps:
-
-            if attention_weights is None:
-
-                raise RuntimeError(
-                    "Attention weights were not captured."
-                )
-
-            if attention_weights.grad is None:
-
-                raise RuntimeError(
-                    "Attention gradients were not captured."
-                )
-
-        # --------------------------------------------------
-        # Attribute Token Row Index
-        # --------------------------------------------------
-        #
-        # Every attribute has its own dedicated token, at a
-        # fixed position among the first ATTRIBUTE_COUNT
-        # tokens. We look at *that* token's attention row.
-        #
-        # --------------------------------------------------
-
-        token_index = ATTRIBUTE_NAMES.index(
-            attribute_name
-        )
-
-        # --------------------------------------------------
-        # Gradient-Weighted Attention, Per Layer
-        # --------------------------------------------------
-        #
-        # For each of the last `num_layers` blocks:
-        #
-        # attn  : (heads, 207, 207)  -> post-softmax weights
-        # grad  : (heads, 207, 207)  -> d(logit) / d(attn)
-        #
-        # We take row `token_index` (the attribute token's
-        # query), restricted to patch-token columns, and
-        # combine attention with its gradient -- this is what
-        # makes the map specific to *this* attribute's logit,
-        # not just "where this token generically looks".
-        #
-        # --------------------------------------------------
-
-        layer_cams = []
-
-        for attention_weights in self.attention_maps:
-
-            attn = attention_weights[0]
-
-            grad = attention_weights.grad[0]
-
-            attn_row = attn[
-                :,
-                token_index,
-                ATTRIBUTE_COUNT:,
-            ]
-
-            grad_row = grad[
-                :,
-                token_index,
-                ATTRIBUTE_COUNT:,
-            ]
-
-            relevance = F.relu(
-                attn_row * grad_row
-            )
-
-            # Average over attention heads
-            layer_cam = relevance.mean(dim=0)
-
-            layer_cams.append(layer_cam)
-
-        # --------------------------------------------------
-        # Combine Layers
-        # --------------------------------------------------
-
-        cam = torch.stack(
-            layer_cams,
-            dim=0,
-        ).mean(dim=0)
-
-        # --------------------------------------------------
-        # Convert 196 patches → 14 × 14
-        # --------------------------------------------------
-
-        cam = cam.reshape(
-            NUM_PATCHES_SIDE,
-            NUM_PATCHES_SIDE,
-        )
-
-        # --------------------------------------------------
-        # Normalize
-        # --------------------------------------------------
-
-        cam = cam.detach().cpu().numpy()
-
-        cam -= cam.min()
-
-        if cam.max() > 0:
-
-            cam /= cam.max()
-
-        # --------------------------------------------------
-        # Resize to Image Size
-        # --------------------------------------------------
-
-        cam = cv2.resize(
-            cam,
-            (
-                IMAGE_SIZE,
-                IMAGE_SIZE,
-            ),
-            interpolation=cv2.INTER_LINEAR,
-        )
-
-        # --------------------------------------------------
-        # Final Normalization
-        # --------------------------------------------------
-
-        cam = np.clip(
-            cam,
-            0,
-            1,
-        )
-
-        return cam, target_class
-
-    # ======================================================
-    # Cleanup
-    # ======================================================
-
-    def remove_hooks(self):
-
-        for handle in self.forward_handles:
-
-            handle.remove()
-
-
-# ==========================================================
-# Load Model
-# ==========================================================
 
 def load_model():
+    """
+    Load the trained MAL-ViT model once.
 
-    model = (
-        ExplainableWBCModel()
-        .to(DEVICE)
+    Returns
+    -------
+    CompleteMALViT
+        Loaded evaluation model.
+    """
+
+    global _MODEL
+
+    if _MODEL is not None:
+        return _MODEL
+
+    device = torch.device(
+        DEVICE
     )
+
+    model = CompleteMALViT()
 
     checkpoint = torch.load(
-        CHECKPOINT_DIR / BEST_MODEL_NAME,
-        map_location=DEVICE,
+        BEST_MODEL_PATH,
+        map_location=device,
     )
 
+    if not isinstance(
+        checkpoint,
+        dict,
+    ):
+        raise TypeError(
+            "Checkpoint must be a dictionary."
+        )
+
+    if "model_state_dict" not in checkpoint:
+        raise KeyError(
+            "Checkpoint does not contain "
+            "'model_state_dict'."
+        )
+
     model.load_state_dict(
-        checkpoint
+        checkpoint["model_state_dict"]
     )
+
+    model.to(device)
 
     model.eval()
 
-    return model
+    _MODEL = model
+
+    return _MODEL
 
 
-# ==========================================================
-# Prepare Image
-# ==========================================================
+# ============================================================
+# IMAGE PREPROCESSING
+# ============================================================
 
-def prepare_image(image_path):
+def preprocess_image(image):
+    """
+    Convert a PIL image into a MAL-ViT input tensor.
 
-    image = Image.open(
-        image_path
-    ).convert("RGB")
+    Parameters
+    ----------
+    image : PIL.Image.Image
 
-    original = np.array(
-        image.resize(
-            (
-                IMAGE_SIZE,
-                IMAGE_SIZE,
-            )
+    Returns
+    -------
+    torch.Tensor
+        Shape:
+            (1, 3, IMAGE_SIZE, IMAGE_SIZE)
+    """
+
+    image = image.convert(
+        "RGB"
+    )
+
+    image = image.resize(
+        (
+            IMAGE_SIZE,
+            IMAGE_SIZE,
         )
     )
 
-    tensor = test_transform(
-        image
+    image_array = np.asarray(
+        image,
+        dtype=np.float32,
     )
 
-    tensor = tensor.unsqueeze(
-        0
-    ).to(DEVICE)
+    image_array /= 255.0
 
-    return tensor, original
+    tensor = torch.from_numpy(
+        image_array
+    )
+
+    tensor = tensor.permute(
+        2,
+        0,
+        1,
+    )
+
+    tensor = tensor.unsqueeze(0)
+
+    return tensor
 
 
-# ==========================================================
-# Create Heatmap
-# ==========================================================
+# ============================================================
+# HEATMAP NORMALIZATION
+# ============================================================
 
-def create_heatmap(
-    original_image,
-    cam,
+def normalize_heatmap(
+    heatmap,
+):
+    """
+    Normalize heatmap to [0, 1].
+    """
+
+    heatmap = np.asarray(
+        heatmap,
+        dtype=np.float32,
+    )
+
+    heatmap = np.maximum(
+        heatmap,
+        0.0,
+    )
+
+    minimum = heatmap.min()
+
+    maximum = heatmap.max()
+
+    if maximum - minimum < 1e-8:
+
+        return np.zeros_like(
+            heatmap
+        )
+
+    heatmap = (
+        heatmap - minimum
+    ) / (
+        maximum - minimum
+    )
+
+    return heatmap
+
+
+# ============================================================
+# PATCH MAP
+# ============================================================
+
+def patches_to_map(
+    patch_scores,
+):
+    """
+    Convert 196 patch scores into a 14 x 14 map.
+
+    Parameters
+    ----------
+    patch_scores : torch.Tensor or numpy.ndarray
+
+    Returns
+    -------
+    numpy.ndarray
+        Shape:
+            (14, 14)
+    """
+
+    if isinstance(
+        patch_scores,
+        torch.Tensor,
+    ):
+
+        patch_scores = (
+            patch_scores.detach()
+            .cpu()
+            .numpy()
+        )
+
+    patch_scores = np.asarray(
+        patch_scores,
+        dtype=np.float32,
+    )
+
+    expected_patches = (
+        PATCH_GRID_SIZE
+        * PATCH_GRID_SIZE
+    )
+
+    if patch_scores.size != expected_patches:
+
+        raise ValueError(
+            f"Expected "
+            f"{expected_patches} patch scores, "
+            f"but received "
+            f"{patch_scores.size}."
+        )
+
+    patch_scores = patch_scores.reshape(
+        PATCH_GRID_SIZE,
+        PATCH_GRID_SIZE,
+    )
+
+    return normalize_heatmap(
+        patch_scores
+    )
+
+
+# ============================================================
+# HEATMAP RESIZING
+# ============================================================
+
+def resize_heatmap(
+    heatmap,
+    size,
+):
+    """
+    Resize heatmap to image dimensions.
+
+    Parameters
+    ----------
+    heatmap : numpy.ndarray
+        2D heatmap.
+
+    size : tuple
+        (width, height)
+
+    Returns
+    -------
+    numpy.ndarray
+    """
+
+    heatmap_tensor = torch.from_numpy(
+        np.asarray(
+            heatmap,
+            dtype=np.float32,
+        )
+    ).float()
+
+    heatmap_tensor = (
+        heatmap_tensor
+        .unsqueeze(0)
+        .unsqueeze(0)
+    )
+
+    heatmap_tensor = F.interpolate(
+        heatmap_tensor,
+        size=(
+            size[1],
+            size[0],
+        ),
+        mode="bilinear",
+        align_corners=False,
+    )
+
+    heatmap = (
+        heatmap_tensor
+        .squeeze()
+        .numpy()
+    )
+
+    return normalize_heatmap(
+        heatmap
+    )
+
+
+# ============================================================
+# SIMPLE HEATMAP COLORIZATION
+# ============================================================
+
+def colorize_heatmap(
+    heatmap,
+):
+    """
+    Convert normalized heatmap into RGB colors.
+
+    Uses a simple blue-to-red visualization.
+
+    Returns
+    -------
+    numpy.ndarray
+        uint8 RGB image.
+    """
+
+    heatmap = np.clip(
+        heatmap,
+        0.0,
+        1.0,
+    )
+
+    red = (
+        255.0
+        * heatmap
+    )
+
+    blue = (
+        255.0
+        * (1.0 - heatmap)
+    )
+
+    green = (
+        255.0
+        * (
+            1.0
+            - np.abs(
+                heatmap - 0.5
+            )
+            * 2.0
+        )
+    )
+
+    rgb = np.stack(
+        [
+            red,
+            green,
+            blue,
+        ],
+        axis=-1,
+    )
+
+    return rgb.astype(
+        np.uint8
+    )
+
+
+# ============================================================
+# OVERLAY
+# ============================================================
+
+def create_overlay(
+    image,
+    heatmap,
     alpha=0.45,
 ):
+    """
+    Create heatmap overlay on original image.
 
-    heatmap = np.uint8(
-        255 * cam
+    Parameters
+    ----------
+    image : PIL.Image.Image
+
+    heatmap : numpy.ndarray
+
+    alpha : float
+        Heatmap blending factor.
+
+    Returns
+    -------
+    PIL.Image.Image
+    """
+
+    image = image.convert(
+        "RGB"
     )
 
-    heatmap = cv2.applyColorMap(
-        heatmap,
-        cv2.COLORMAP_JET,
+    original = np.asarray(
+        image,
+        dtype=np.float32,
     )
 
-    heatmap = cv2.cvtColor(
-        heatmap,
-        cv2.COLOR_BGR2RGB,
+    heatmap_rgb = colorize_heatmap(
+        heatmap
+    ).astype(
+        np.float32
     )
 
     overlay = (
-        original_image.astype(
-            np.float32
-        )
-        * (1 - alpha)
+        (1.0 - alpha)
+        * original
         +
-        heatmap.astype(
-            np.float32
-        )
-        * alpha
+        alpha
+        * heatmap_rgb
     )
 
     overlay = np.clip(
@@ -525,104 +470,946 @@ def create_heatmap(
         np.uint8
     )
 
-    return overlay
+    return Image.fromarray(
+        overlay
+    )
 
 
-# ==========================================================
-# Generate All Attribute CAMs
-# ==========================================================
+# ============================================================
+# ATTRIBUTE ATTRIBUTION
+# ============================================================
 
-def generate_all_attribute_cams(
-    image_path
+def generate_attribute_cam(
+    image,
+    attribute_name,
 ):
+    """
+    Generate attribute-specific XAI maps.
+
+    Three attribution maps are produced:
+
+        1. Attention-only
+        2. Gradient-only
+        3. Attention × Gradient
+
+    Parameters
+    ----------
+    image : PIL.Image.Image
+
+    attribute_name : str
+
+        One of ATTRIBUTE_NAMES.
+
+    Returns
+    -------
+    dict
+        Contains prediction, logits, heatmaps,
+        attention maps, gradient maps and overlays.
+    """
+
+    if attribute_name not in ATTRIBUTE_NAMES:
+
+        raise ValueError(
+            f"Unknown attribute: "
+            f"{attribute_name}. "
+            f"Expected one of "
+            f"{ATTRIBUTE_NAMES}"
+        )
 
     model = load_model()
 
-    image_tensor, original_image = (
-        prepare_image(image_path)
+    device = torch.device(
+        DEVICE
     )
 
-    grad_cam = ViTGradCAM(
-        model
+    input_tensor = preprocess_image(
+        image
+    ).to(device)
+
+    # --------------------------------------------------------
+    # Enable gradient
+    # --------------------------------------------------------
+
+    input_tensor.requires_grad_()
+
+    # --------------------------------------------------------
+    # Forward pass
+    # --------------------------------------------------------
+
+    outputs = model(
+        input_tensor,
+        return_attention=True,
     )
+
+    # --------------------------------------------------------
+    # Attribute logits
+    # --------------------------------------------------------
+
+    attribute_logits = outputs[
+        "attribute_predictions"
+    ][
+        attribute_name
+    ]
+
+    # --------------------------------------------------------
+    # Predicted class
+    # --------------------------------------------------------
+
+    predicted_index = int(
+        torch.argmax(
+            attribute_logits,
+            dim=1,
+        ).item()
+    )
+
+    predicted_logit = (
+        attribute_logits[
+            0,
+            predicted_index,
+        ]
+    )
+
+    # --------------------------------------------------------
+    # Gradient
+    # --------------------------------------------------------
+
+    model.zero_grad(
+        set_to_none=True
+    )
+
+    if input_tensor.grad is not None:
+
+        input_tensor.grad.zero_()
+
+    predicted_logit.backward()
+
+    # --------------------------------------------------------
+    # Transformer attention
+    # --------------------------------------------------------
+
+    attentions = outputs.get(
+        "attention"
+    )
+
+    if attentions is None:
+
+        raise RuntimeError(
+            "Model did not return "
+            "attention matrices."
+        )
+
+    if len(attentions) == 0:
+
+        raise RuntimeError(
+            "No transformer attention "
+            "matrices were returned."
+        )
+
+    # --------------------------------------------------------
+    # Attribute token index
+    # --------------------------------------------------------
+
+    attribute_index = (
+        ATTRIBUTE_NAMES.index(
+            attribute_name
+        )
+    )
+
+    attribute_token_index = (
+        ATTRIBUTE_TOKEN_START
+        + attribute_index
+    )
+
+    # --------------------------------------------------------
+    # Aggregate attention across blocks
+    # --------------------------------------------------------
+
+    attention_maps = []
+
+    for attention in attentions:
+
+        # Expected:
+        #
+        # (B, H, N, N)
+
+        if attention.ndim != 4:
+
+            raise RuntimeError(
+                "Unexpected attention shape: "
+                f"{tuple(attention.shape)}"
+            )
+
+        current = attention[
+            0
+        ]
+
+        # ----------------------------------------------------
+        # Average attention heads
+        # ----------------------------------------------------
+
+        current = current.mean(
+            dim=0
+        )
+
+        # ----------------------------------------------------
+        # Attribute token -> patch tokens
+        # ----------------------------------------------------
+
+        current = current[
+            attribute_token_index,
+            PATCH_TOKEN_START:
+            PATCH_TOKEN_START
+            + NUM_PATCHES,
+        ]
+
+        attention_maps.append(
+            current
+        )
+
+    # --------------------------------------------------------
+    # Average transformer blocks
+    # --------------------------------------------------------
+
+    attention_map = torch.stack(
+        attention_maps,
+        dim=0,
+    ).mean(
+        dim=0
+    )
+
+    attention_map = torch.relu(
+        attention_map
+    )
+
+    # --------------------------------------------------------
+    # Attention spatial map
+    # --------------------------------------------------------
+
+    attention_spatial = patches_to_map(
+        attention_map
+    )
+
+    # --------------------------------------------------------
+    # Gradient information
+    # --------------------------------------------------------
+
+    input_gradient = input_tensor.grad
+
+    if input_gradient is None:
+
+        raise RuntimeError(
+            "Input gradient was not generated."
+        )
+
+    # --------------------------------------------------------
+    # Gradient magnitude
+    # --------------------------------------------------------
+
+    gradient_strength = (
+        input_gradient
+        .abs()
+        .mean(
+            dim=1,
+        )
+    )
+
+    # --------------------------------------------------------
+    # Resize gradient to patch grid
+    # --------------------------------------------------------
+
+    gradient_strength = F.interpolate(
+        gradient_strength.unsqueeze(1),
+        size=(
+            PATCH_GRID_SIZE,
+            PATCH_GRID_SIZE,
+        ),
+        mode="bilinear",
+        align_corners=False,
+    )
+
+    gradient_strength = (
+        gradient_strength
+        .squeeze()
+        .detach()
+        .cpu()
+    )
+
+    gradient_spatial = normalize_heatmap(
+        gradient_strength.numpy()
+    )
+
+    # --------------------------------------------------------
+    # Combine attention and gradient
+    # --------------------------------------------------------
+
+    combined = (
+        attention_spatial
+        *
+        gradient_spatial
+    )
+
+    combined = normalize_heatmap(
+        combined
+    )
+
+    # --------------------------------------------------------
+    # Resize all maps to original image
+    # --------------------------------------------------------
+
+    original_size = image.size
+
+    attention_heatmap = resize_heatmap(
+        attention_spatial,
+        original_size,
+    )
+
+    gradient_heatmap = resize_heatmap(
+        gradient_spatial,
+        original_size,
+    )
+
+    combined_heatmap = resize_heatmap(
+        combined,
+        original_size,
+    )
+
+    # --------------------------------------------------------
+    # Create overlays
+    # --------------------------------------------------------
+
+    attention_overlay = create_overlay(
+        image,
+        attention_heatmap,
+        alpha=0.45,
+    )
+
+    gradient_overlay = create_overlay(
+        image,
+        gradient_heatmap,
+        alpha=0.45,
+    )
+
+    combined_overlay = create_overlay(
+        image,
+        combined_heatmap,
+        alpha=0.45,
+    )
+
+    # --------------------------------------------------------
+    # Decode prediction
+    # --------------------------------------------------------
+
+    predicted_class = decode_attribute(
+        attribute_name,
+        predicted_index,
+    )
+
+    # --------------------------------------------------------
+    # Logits
+    # --------------------------------------------------------
+
+    logits = (
+        attribute_logits[
+            0
+        ]
+        .detach()
+        .cpu()
+        .numpy()
+    )
+
+    # --------------------------------------------------------
+    # Return
+    # --------------------------------------------------------
+
+    return {
+
+        "attribute":
+            attribute_name,
+
+        "predicted_class_index":
+            predicted_index,
+
+        "predicted_class":
+            predicted_class,
+
+        "logits":
+            logits,
+
+        # Combined map
+        "heatmap":
+            combined_heatmap,
+
+        "overlay":
+            combined_overlay,
+
+        # Attention
+        "attention_map":
+            attention_spatial,
+
+        "attention_heatmap":
+            attention_heatmap,
+
+        "attention_overlay":
+            attention_overlay,
+
+        # Gradient
+        "gradient_map":
+            gradient_spatial,
+
+        "gradient_heatmap":
+            gradient_heatmap,
+
+        "gradient_overlay":
+            gradient_overlay,
+
+        # Combined
+        "combined_heatmap":
+            combined_heatmap,
+
+        "combined_overlay":
+            combined_overlay,
+    }
+
+
+# ============================================================
+# ALL ATTRIBUTE CAMS
+# ============================================================
+
+def generate_all_attribute_cams(
+    image,
+):
+    """
+    Generate explanations for all 11 morphology attributes.
+
+    Parameters
+    ----------
+    image : PIL.Image.Image or str or Path
+
+    Returns
+    -------
+    dict
+        attribute name -> explanation dictionary
+    """
+
+    if isinstance(
+        image,
+        (
+            str,
+            Path,
+        ),
+    ):
+
+        image = Image.open(
+            image
+        ).convert(
+            "RGB"
+        )
 
     results = {}
 
-    try:
+    for attribute_name in ATTRIBUTE_NAMES:
 
-        for attribute_name in ATTRIBUTE_NAMES:
+        print(
+            f"Generating CAM: "
+            f"{attribute_name}"
+        )
 
-            # A fresh forward pass is required for every
-            # attribute: backward() consumes the graph, and
-            # each attribute needs its own gradients w.r.t.
-            # the attention weights.
-
-            cam, predicted_class = (
-                grad_cam.generate(
-                    image_tensor,
-                    attribute_name,
-                )
-            )
-
-            overlay = create_heatmap(
-                original_image,
-                cam,
-            )
-
-            results[
-                attribute_name
-            ] = {
-                "cam": cam,
-                "overlay": overlay,
-                "class_index": predicted_class,
-            }
-
-    finally:
-
-        grad_cam.remove_hooks()
+        results[
+            attribute_name
+        ] = generate_attribute_cam(
+            image,
+            attribute_name,
+        )
 
     return results
 
 
-# ==========================================================
-# Quick Test
-# ==========================================================
+# ============================================================
+# COMPLETE PREDICTION + EXPLANATION
+# ============================================================
+
+def generate_explanations(
+    image,
+):
+    """
+    Generate WBC prediction, morphology predictions,
+    and all attribute explanations.
+
+    Returns
+    -------
+    dict
+    """
+
+    if isinstance(
+        image,
+        (
+            str,
+            Path,
+        ),
+    ):
+
+        image = Image.open(
+            image
+        ).convert(
+            "RGB"
+        )
+
+    model = load_model()
+
+    device = torch.device(
+        DEVICE
+    )
+
+    input_tensor = preprocess_image(
+        image
+    ).to(device)
+
+    with torch.no_grad():
+
+        outputs = model(
+            input_tensor
+        )
+
+    # --------------------------------------------------------
+    # WBC
+    # --------------------------------------------------------
+
+    wbc_index = int(
+        outputs[
+            "wbc_prediction"
+        ][0].item()
+    )
+
+    wbc_name = decode_wbc(
+        wbc_index
+    )
+
+    # --------------------------------------------------------
+    # Attributes
+    # --------------------------------------------------------
+
+    attributes = {}
+
+    for attribute_name in ATTRIBUTE_NAMES:
+
+        logits = outputs[
+            "attribute_predictions"
+        ][
+            attribute_name
+        ]
+
+        index = int(
+            torch.argmax(
+                logits,
+                dim=1,
+            )[0].item()
+        )
+
+        attributes[
+            attribute_name
+        ] = decode_attribute(
+            attribute_name,
+            index,
+        )
+
+    # --------------------------------------------------------
+    # CAMs
+    # --------------------------------------------------------
+
+    cams = generate_all_attribute_cams(
+        image
+    )
+
+    return {
+
+        "wbc":
+            wbc_name,
+
+        "wbc_index":
+            wbc_index,
+
+        "attributes":
+            attributes,
+
+        "cams":
+            cams,
+    }
+
+
+# ============================================================
+# QUICK TEST
+# ============================================================
+
+def main():
+
+    print("=" * 70)
+
+    print(
+        "MAL-ViT ATTRIBUTE XAI TEST"
+    )
+
+    print("=" * 70)
+
+    # --------------------------------------------------------
+    # Configuration
+    # --------------------------------------------------------
+
+    print("\nConfiguration")
+
+    print(
+        f"Device              : {DEVICE}"
+    )
+
+    print(
+        f"Image size          : {IMAGE_SIZE}"
+    )
+
+    print(
+        f"Patch tokens        : {NUM_PATCHES}"
+    )
+
+    print(
+        f"Patch grid          : "
+        f"{PATCH_GRID_SIZE} x "
+        f"{PATCH_GRID_SIZE}"
+    )
+
+    print(
+        f"Attribute tokens    : "
+        f"{NUM_ATTRIBUTE_TOKENS}"
+    )
+
+    print(
+        f"Register tokens     : "
+        f"{NUM_REGISTER_TOKENS}"
+    )
+
+    print(
+        f"Patch token start   : "
+        f"{PATCH_TOKEN_START}"
+    )
+
+    print(
+        f"Attributes          : "
+        f"{len(ATTRIBUTE_NAMES)}"
+    )
+
+    # --------------------------------------------------------
+    # Find sample image
+    # --------------------------------------------------------
+
+    image_folder = Path(
+        "images"
+    )
+
+    if not image_folder.exists():
+
+        raise FileNotFoundError(
+            "images/ folder not found."
+        )
+
+    image_files = sorted(
+        [
+            p
+            for p in image_folder.iterdir()
+            if p.suffix.lower()
+            in [
+                ".jpg",
+                ".jpeg",
+                ".png",
+            ]
+        ]
+    )
+
+    if not image_files:
+
+        raise FileNotFoundError(
+            "No sample images found "
+            "inside images/."
+        )
+
+    image_path = image_files[0]
+
+    print(
+        f"\nSample image: "
+        f"{image_path}"
+    )
+
+    image = Image.open(
+        image_path
+    ).convert(
+        "RGB"
+    )
+
+    # --------------------------------------------------------
+    # Generate explanations
+    # --------------------------------------------------------
+
+    print(
+        "\nGenerating attribute explanations..."
+    )
+
+    results = generate_all_attribute_cams(
+        image
+    )
+
+    # --------------------------------------------------------
+    # Results
+    # --------------------------------------------------------
+
+    print(
+        "\n" + "-" * 70
+    )
+
+    print(
+        "ATTRIBUTE PREDICTIONS"
+    )
+
+    print(
+        "-" * 70
+    )
+
+    for attribute_name, result in results.items():
+
+        print(
+            f"{attribute_name:35s}: "
+            f"{result['predicted_class']}"
+        )
+
+    # --------------------------------------------------------
+    # Output folder
+    # --------------------------------------------------------
+
+    output_folder = (
+        Path("outputs")
+        / "xai"
+    )
+
+    output_folder.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    # --------------------------------------------------------
+    # Save visualizations
+    # --------------------------------------------------------
+
+    print(
+        "\nSaving XAI visualizations..."
+    )
+
+    for attribute_name, result in results.items():
+
+        safe_name = (
+            attribute_name
+            .replace(
+                " ",
+                "_",
+            )
+        )
+
+        # ----------------------------------------------------
+        # Attention-only
+        # ----------------------------------------------------
+
+        attention_path = (
+            output_folder
+            / f"{safe_name}_attention.png"
+        )
+
+        result[
+            "attention_overlay"
+        ].save(
+            attention_path
+        )
+
+        print(
+            f"Saved: {attention_path}"
+        )
+
+        # ----------------------------------------------------
+        # Gradient-only
+        # ----------------------------------------------------
+
+        gradient_path = (
+            output_folder
+            / f"{safe_name}_gradient.png"
+        )
+
+        result[
+            "gradient_overlay"
+        ].save(
+            gradient_path
+        )
+
+        print(
+            f"Saved: {gradient_path}"
+        )
+
+        # ----------------------------------------------------
+        # Combined
+        # ----------------------------------------------------
+
+        combined_path = (
+            output_folder
+            / f"{safe_name}_gradcam.png"
+        )
+
+        result[
+            "combined_overlay"
+        ].save(
+            combined_path
+        )
+
+        print(
+            f"Saved: {combined_path}"
+        )
+
+    # --------------------------------------------------------
+    # Validation
+    # --------------------------------------------------------
+
+    assert len(
+        results
+    ) == len(
+        ATTRIBUTE_NAMES
+    )
+
+    for attribute_name in ATTRIBUTE_NAMES:
+
+        assert (
+            attribute_name
+            in results
+        )
+
+        result = results[
+            attribute_name
+        ]
+
+        # ----------------------------------------------------
+        # Combined heatmap
+        # ----------------------------------------------------
+
+        assert (
+            result["heatmap"].ndim
+            == 2
+        )
+
+        assert (
+            result["heatmap"].shape
+            == (
+                image.height,
+                image.width,
+            )
+        )
+
+        assert (
+            0.0
+            <= result["heatmap"].min()
+            <= 1.0
+        )
+
+        assert (
+            0.0
+            <= result["heatmap"].max()
+            <= 1.0
+        )
+
+        # ----------------------------------------------------
+        # Attention heatmap
+        # ----------------------------------------------------
+
+        assert (
+            result[
+                "attention_heatmap"
+            ].ndim
+            == 2
+        )
+
+        assert (
+            result[
+                "attention_heatmap"
+            ].shape
+            == (
+                image.height,
+                image.width,
+            )
+        )
+
+        assert (
+            0.0
+            <= result[
+                "attention_heatmap"
+            ].min()
+            <= 1.0
+        )
+
+        assert (
+            0.0
+            <= result[
+                "attention_heatmap"
+            ].max()
+            <= 1.0
+        )
+
+        # ----------------------------------------------------
+        # Gradient heatmap
+        # ----------------------------------------------------
+
+        assert (
+            result[
+                "gradient_heatmap"
+            ].ndim
+            == 2
+        )
+
+        assert (
+            result[
+                "gradient_heatmap"
+            ].shape
+            == (
+                image.height,
+                image.width,
+            )
+        )
+
+        assert (
+            0.0
+            <= result[
+                "gradient_heatmap"
+            ].min()
+            <= 1.0
+        )
+
+        assert (
+            0.0
+            <= result[
+                "gradient_heatmap"
+            ].max()
+            <= 1.0
+        )
+
+    # --------------------------------------------------------
+    # Final validation
+    # --------------------------------------------------------
+
+    print(
+        "\n" + "=" * 70
+    )
+
+    print(
+        "ATTRIBUTE XAI VALIDATION: PASSED"
+    )
+
+    print(
+        "=" * 70
+    )
+
+
+# ============================================================
+# ENTRY POINT
+# ============================================================
 
 if __name__ == "__main__":
 
-    print("=" * 70)
-    print("MAL-ViT Attribute Grad-CAM Test")
-    print("=" * 70)
-
-    image_path = input(
-        "\nEnter image path: "
-    ).strip()
-
-    image_path = Path(
-        image_path
-    )
-
-    if not image_path.exists():
-
-        raise FileNotFoundError(
-            f"Image not found: {image_path}"
-        )
-
-    results = generate_all_attribute_cams(
-        image_path
-    )
-
-    print("\nGenerated Grad-CAMs:")
-
-    for attribute_name in results:
-
-        print(
-            f"  ✓ {attribute_name}"
-        )
-
-    print(
-        "\nTotal CAMs:",
-        len(results),
-    )
-
-    print("\nDone.")
+    main()
