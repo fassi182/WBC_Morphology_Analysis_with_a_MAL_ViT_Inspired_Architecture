@@ -9,6 +9,8 @@ from pathlib import Path
 
 import torch
 
+from config import BEST_MODEL_NAME, LAST_CHECKPOINT_NAME
+
 
 class CheckpointManager:
 
@@ -103,6 +105,9 @@ class CheckpointManager:
         # Additional information
         # --------------------------------------------------
 
+        if hasattr(model, "checkpoint_metadata"):
+            checkpoint.update(model.checkpoint_metadata())
+
         checkpoint.update(kwargs)
 
         torch.save(
@@ -136,11 +141,17 @@ class CheckpointManager:
         checkpoint = torch.load(
             path,
             map_location=map_location,
+            weights_only=True,
         )
 
         # --------------------------------------------------
         # Model
         # --------------------------------------------------
+
+        if hasattr(model, "checkpoint_metadata"):
+            for key, expected in model.checkpoint_metadata().items():
+                if key in checkpoint and checkpoint[key] != expected:
+                    raise ValueError(f"Checkpoint {key} does not match the model")
 
         model.load_state_dict(
             checkpoint[
@@ -199,7 +210,7 @@ class CheckpointManager:
             epoch=epoch,
             metric=metric,
             scheduler=scheduler,
-            filename="best_model.pt",
+            filename=BEST_MODEL_NAME,
         )
 
     # ======================================================
@@ -221,7 +232,7 @@ class CheckpointManager:
             epoch=epoch,
             metric=metric,
             scheduler=scheduler,
-            filename="latest.pt",
+            filename=LAST_CHECKPOINT_NAME,
         )
 
 

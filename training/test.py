@@ -873,6 +873,12 @@ def format_results_for_json(
             ],
     }
 
+    if "checkpoint_source" in results:
+        json_results["checkpoint_source"] = results["checkpoint_source"]
+    json_results["num_test_images"] = len(json_results["labels"])
+    if "concept_representation" in results:
+        json_results["concept_representation"] = results["concept_representation"]
+
     return json_results
 
 

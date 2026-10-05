@@ -21,70 +21,7 @@ from training.losses import compute_total_loss
 # ============================================================
 
 def extract_batch(batch):
-
-    tensor_items = [
-        item for item in batch
-        if torch.is_tensor(item)
-    ]
-
-    if len(tensor_items) < 3:
-        raise RuntimeError(
-            "DataLoader batch does not contain enough "
-            "tensor elements."
-        )
-
-    images = None
-    labels = None
-    attributes = None
-
-    # Image: (B, 3, H, W)
-    for item in tensor_items:
-
-        if (
-            item.ndim == 4
-            and item.shape[1] == 3
-        ):
-            images = item
-            break
-
-    # WBC labels: (B,)
-    for item in tensor_items:
-
-        if item.ndim == 1:
-
-            # Avoid accidentally selecting another 1D tensor
-            # with a different batch dimension.
-            if images is None or item.shape[0] == images.shape[0]:
-
-                labels = item
-                break
-
-    # Attributes: (B, 11)
-    for item in tensor_items:
-
-        if (
-            item.ndim == 2
-            and item.shape[1] == 11
-        ):
-            attributes = item
-            break
-
-    if images is None:
-        raise RuntimeError(
-            "Could not identify image tensor."
-        )
-
-    if labels is None:
-        raise RuntimeError(
-            "Could not identify WBC label tensor."
-        )
-
-    if attributes is None:
-        raise RuntimeError(
-            "Could not identify attribute tensor."
-        )
-
-    return images, labels, attributes
+    return batch["images"], batch["labels"], batch["attributes"]
 
 
 # ============================================================

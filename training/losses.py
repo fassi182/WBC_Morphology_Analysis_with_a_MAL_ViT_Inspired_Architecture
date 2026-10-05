@@ -16,6 +16,8 @@ from config import (
     ATTRIBUTE_NAMES,
     ATTRIBUTE_CLASS_COUNTS,
     NUM_WBC_CLASSES,
+    WBC_LOSS_WEIGHT,
+    ATTRIBUTE_LOSS_WEIGHT,
 )
 
 
@@ -101,8 +103,8 @@ def compute_total_loss(
     outputs,
     wbc_targets,
     attribute_targets,
-    wbc_weight=1.0,
-    attribute_weight=1.0,
+    wbc_weight=WBC_LOSS_WEIGHT,
+    attribute_weight=ATTRIBUTE_LOSS_WEIGHT,
 ):
     """
     Computes the complete MAL-ViT loss.

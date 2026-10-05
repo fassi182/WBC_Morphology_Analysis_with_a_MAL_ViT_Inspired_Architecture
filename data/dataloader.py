@@ -75,7 +75,7 @@ def wbca_collate_fn(batch):
 # Create DataLoaders
 # ==========================================================
 
-def create_dataloaders():
+def create_dataloaders(batch_size=BATCH_SIZE, num_workers=NUM_WORKERS):
 
     train_dataset = WBCDataset(
         annotation_file=TRAIN_CSV,
@@ -97,27 +97,27 @@ def create_dataloaders():
 
     train_loader = DataLoader(
         train_dataset,
-        batch_size=BATCH_SIZE,
+        batch_size=batch_size,
         shuffle=True,
-        num_workers=NUM_WORKERS,
+        num_workers=num_workers,
         pin_memory=torch.cuda.is_available(),
         collate_fn=wbca_collate_fn,
     )
 
     val_loader = DataLoader(
         val_dataset,
-        batch_size=BATCH_SIZE,
+        batch_size=batch_size,
         shuffle=False,
-        num_workers=NUM_WORKERS,
+        num_workers=num_workers,
         pin_memory=torch.cuda.is_available(),
         collate_fn=wbca_collate_fn,
     )
 
     test_loader = DataLoader(
         test_dataset,
-        batch_size=BATCH_SIZE,
+        batch_size=batch_size,
         shuffle=False,
-        num_workers=NUM_WORKERS,
+        num_workers=num_workers,
         pin_memory=torch.cuda.is_available(),
         collate_fn=wbca_collate_fn,
     )

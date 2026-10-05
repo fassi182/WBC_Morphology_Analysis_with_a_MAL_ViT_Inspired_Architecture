@@ -1,50 +1,11 @@
-"""
-models/mal_vit.py
+"""MAL-ViT-inspired image-to-morphology backbone for this WBC project.
 
-MAL-ViT
-------
+Image -> 196 patch tokens + 11 attribute tokens + 4 register tokens
+      -> six transformer blocks -> eleven attribute prediction heads.
 
-Morphology-Aware Learning Vision Transformer.
-
-This module implements the main MAL-ViT backbone.
-
-Architecture
-------------
-
-Input Image
-    ↓
-Patch Embedding
-    ↓
-196 Patch Tokens
-    +
-11 Attribute Tokens
-    +
-4 Register Tokens
-    ↓
-211 Tokens
-    ↓
-Positional Embedding
-    ↓
-Transformer Encoder × 6
-    ↓
-Final Normalized Tokens
-    ├── Attribute Tokens → Attribute Heads
-    ├── Register Tokens  → WBC Classifier
-    └── Patch Tokens     → XAI / Grad-CAM
-
-Responsibilities
-----------------
-- Convert images into patch tokens.
-- Add learnable morphology attribute tokens.
-- Add learnable register tokens.
-- Add positional embeddings.
-- Run the complete Transformer encoder.
-- Separate attribute/register/patch features.
-- Produce morphology attribute predictions.
-- Optionally return attention matrices.
-
-The WBC classification head is intentionally kept outside this
-module and will be connected in models/complete_model.py.
+Register tokens provide context inside the transformer. The WBC classifier in
+complete_model.py receives only predicted attribute probabilities, not register
+or patch features. This is an adaptation, not the paper's exact architecture.
 """
 
 import torch
@@ -68,7 +29,7 @@ from models.attribute_heads import AttributeHeads
 
 class MALViT(nn.Module):
     """
-    Morphology-Aware Learning Vision Transformer.
+    MAL-ViT-inspired image-to-attribute transformer.
 
     This class represents the main MAL-ViT feature extractor.
 

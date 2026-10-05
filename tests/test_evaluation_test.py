@@ -67,84 +67,8 @@ def main():
     print()
     print("[2] Creating model...")
 
-    model = CompleteMALViT()
-
-    model = model.to(device)
-
-    print("Model created.")
-
-    # ======================================================
-    # Load checkpoint
-    # ======================================================
-
-    print()
-    print("[3] Loading trained checkpoint...")
-
-    print(
-        "Checkpoint path:"
-    )
-
-    print(BEST_MODEL_PATH)
-
-    checkpoint = torch.load(
-        BEST_MODEL_PATH,
-        map_location=device,
-    )
-
-    # ------------------------------------------------------
-    # Validate checkpoint
-    # ------------------------------------------------------
-
-    if not isinstance(
-        checkpoint,
-        dict,
-    ):
-
-        raise TypeError(
-            "Checkpoint must be a dictionary."
-        )
-
-    if "model_state_dict" not in checkpoint:
-
-        raise KeyError(
-            "Checkpoint does not contain "
-            "'model_state_dict'."
-        )
-
-    # ------------------------------------------------------
-    # Load model weights
-    # ------------------------------------------------------
-
-    model.load_state_dict(
-        checkpoint[
-            "model_state_dict"
-        ]
-    )
-
-    print(
-        "Checkpoint loaded successfully."
-    )
-
-    if "epoch" in checkpoint:
-
-        print(
-            f"Checkpoint epoch : "
-            f"{checkpoint['epoch']}"
-        )
-
-    if "metric" in checkpoint:
-
-        print(
-            f"Checkpoint metric: "
-            f"{checkpoint['metric']:.6f}"
-        )
-
-    # ======================================================
-    # Evaluate
-    # ======================================================
-
-    print()
-    print("[4] Evaluating test set...")
+    from utils.model_loading import load_model
+    model = load_model(device=device)
 
     results = evaluate_test_set(
         model=model,

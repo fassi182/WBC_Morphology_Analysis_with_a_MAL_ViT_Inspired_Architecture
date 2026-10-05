@@ -1,273 +1,30 @@
-"""
-wbc_classifier.py
+"""WBC classification using only the 31 values encoding 11 attributes."""
 
-WBC classification head for MAL-ViT.
-
-The model uses the register tokens as a compact representation
-of global/contextual information for the final WBC classification.
-
-Input:
-    Register token features
-    (B, NUM_REGISTER_TOKENS, EMBED_DIM)
-
-The register tokens are pooled and passed through a small
-classification head.
-
-Output:
-    WBC logits
-    (B, NUM_WBC_CLASSES)
-
-Classes:
-    0 - Neutrophil
-    1 - Eosinophil
-    2 - Monocyte
-    3 - Basophil
-    4 - Lymphocyte
-"""
-
-import torch
 import torch.nn as nn
 
-from config import (
-    EMBED_DIM,
-    NUM_REGISTER_TOKENS,
-    NUM_WBC_CLASSES,
-    WBC_CLASSES,
-)
+from config import NUM_WBC_CLASSES
+from data.encoders import ATTRIBUTE_CLASS_COUNTS, ATTRIBUTE_NAMES
+
+ATTRIBUTE_INPUT_DIM = sum(ATTRIBUTE_CLASS_COUNTS[name] for name in ATTRIBUTE_NAMES)
 
 
 class WBCClassifier(nn.Module):
-    """
-    Global WBC classification head.
+    """Shared head for attribute probabilities or one-hot attributes.
 
-    Register tokens are used instead of an individual patch token
-    because register tokens are specifically intended to store
-    global/contextual information.
+    No patch tokens, register tokens, or image features enter this head.
     """
 
-    def __init__(self):
-
+    def __init__(self, hidden_dim_1=64, hidden_dim_2=32, dropout=0.2):
         super().__init__()
-
-        # --------------------------------------------------
-        # Register Token Pooling
-        # --------------------------------------------------
-
-        self.register_pool = nn.AdaptiveAvgPool1d(1)
-
-        # --------------------------------------------------
-        # Classification Head
-        # --------------------------------------------------
-
-        self.classifier = nn.Sequential(
-
-            nn.LayerNorm(
-                EMBED_DIM
-            ),
-
-            nn.Linear(
-                EMBED_DIM,
-                EMBED_DIM,
-            ),
-
-            nn.GELU(),
-
-            nn.Dropout(
-                0.1
-            ),
-
-            nn.Linear(
-                EMBED_DIM,
-                NUM_WBC_CLASSES,
-            ),
+        self.input_dim = ATTRIBUTE_INPUT_DIM
+        self.network = nn.Sequential(
+            nn.Linear(self.input_dim, hidden_dim_1), nn.ReLU(), nn.Dropout(dropout),
+            nn.Linear(hidden_dim_1, hidden_dim_2), nn.ReLU(), nn.Dropout(dropout),
+            nn.Linear(hidden_dim_2, NUM_WBC_CLASSES),
         )
 
-    # ======================================================
-    # Forward
-    # ======================================================
-
-    def forward(self, register_features):
-        """
-        Parameters
-        ----------
-        register_features : torch.Tensor
-
-            Shape:
-                (B, NUM_REGISTER_TOKENS, EMBED_DIM)
-
-        Returns
-        -------
-        logits : torch.Tensor
-
-            Shape:
-                (B, NUM_WBC_CLASSES)
-        """
-
-        # --------------------------------------------------
-        # Validate Input
-        # --------------------------------------------------
-
-        if register_features.ndim != 3:
-
-            raise ValueError(
-                "Register features must have shape "
-                "(B, register_tokens, embedding_dim). "
-                f"Received: "
-                f"{tuple(register_features.shape)}"
-            )
-
-        if register_features.size(1) != NUM_REGISTER_TOKENS:
-
-            raise ValueError(
-                f"Expected {NUM_REGISTER_TOKENS} "
-                f"register tokens, "
-                f"received {register_features.size(1)}"
-            )
-
-        if register_features.size(2) != EMBED_DIM:
-
-            raise ValueError(
-                f"Expected embedding dimension "
-                f"{EMBED_DIM}, "
-                f"received {register_features.size(2)}"
-            )
-
-        # --------------------------------------------------
-        # Pool Register Tokens
-        # --------------------------------------------------
-
-        # (B, R, D)
-        #
-        # AdaptiveAvgPool1d expects:
-        # (B, D, R)
-
-        pooled = register_features.transpose(
-            1,
-            2,
-        )
-
-        # (B, D, R)
-        pooled = self.register_pool(
-            pooled
-        )
-
-        # (B, D, 1)
-        pooled = pooled.squeeze(
-            -1
-        )
-
-        # (B, D)
-
-        # --------------------------------------------------
-        # Classification
-        # --------------------------------------------------
-
-        logits = self.classifier(
-            pooled
-        )
-
-        return logits
-
-
-# ==========================================================
-# Quick Test
-# ==========================================================
-
-if __name__ == "__main__":
-
-    print("=" * 70)
-    print("MAL-ViT WBC Classifier Test")
-    print("=" * 70)
-
-    print("\nConfiguration")
-
-    print(
-        f"Number of WBC classes : "
-        f"{NUM_WBC_CLASSES}"
-    )
-
-    print(
-        f"Register tokens       : "
-        f"{NUM_REGISTER_TOKENS}"
-    )
-
-    print(
-        f"Embedding dimension   : "
-        f"{EMBED_DIM}"
-    )
-
-    print("\nWBC Classes:")
-
-    for index, name in enumerate(
-        WBC_CLASSES
-    ):
-
-        print(
-            f"  {index}: {name}"
-        )
-
-    # ------------------------------------------------------
-    # Create Model
-    # ------------------------------------------------------
-
-    classifier = WBCClassifier()
-
-    print("\nClassifier:")
-    print(classifier)
-
-    # ------------------------------------------------------
-    # Dummy Input
-    # ------------------------------------------------------
-
-    batch_size = 4
-
-    register_features = torch.randn(
-        batch_size,
-        NUM_REGISTER_TOKENS,
-        EMBED_DIM,
-    )
-
-    print("\nInput shape:")
-    print(
-        register_features.shape
-    )
-
-    # ------------------------------------------------------
-    # Forward
-    # ------------------------------------------------------
-
-    logits = classifier(
-        register_features
-    )
-
-    print("\nOutput shape:")
-    print(
-        logits.shape
-    )
-
-    print("\nExpected shape:")
-    print(
-        (
-            batch_size,
-            NUM_WBC_CLASSES,
-        )
-    )
-
-    # ------------------------------------------------------
-    # Validation
-    # ------------------------------------------------------
-
-    assert logits.shape == (
-        batch_size,
-        NUM_WBC_CLASSES,
-    )
-
-    assert torch.isfinite(
-        logits
-    ).all()
-
-    print(
-        "\nWBC classifier validation: PASSED"
-    )
-
-    print("=" * 70)
+    def forward(self, attribute_vector):
+        if attribute_vector.ndim != 2 or attribute_vector.size(1) != self.input_dim:
+            raise ValueError(f"Expected (B, {self.input_dim}) attribute values, "
+                             f"got {tuple(attribute_vector.shape)}")
+        return self.network(attribute_vector)

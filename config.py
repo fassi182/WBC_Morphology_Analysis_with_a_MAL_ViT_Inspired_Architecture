@@ -24,6 +24,8 @@ from pathlib import Path
 
 import torch
 
+from data.encoders import ATTRIBUTE_NAMES
+
 
 # ============================================================
 # PROJECT PATHS
@@ -92,9 +94,13 @@ TEST_CSV = (
 # CHECKPOINTS
 # ============================================================
 
-BEST_MODEL_NAME = "best_model.pth"
+BEST_MODEL_NAME = "best_concept_model.pth"
 
-LAST_CHECKPOINT_NAME = "last_checkpoint.pth"
+LAST_CHECKPOINT_NAME = "last_concept_checkpoint.pth"
+
+# Keep the original trained artifacts when training the concept bottleneck.
+LEGACY_MODEL_PATH = CHECKPOINT_DIR / "best_model.pth"
+ATTRIBUTE_MODEL_PATH = CHECKPOINT_DIR / "best_attribute_wbc.pth"
 
 BEST_MODEL_PATH = (
     CHECKPOINT_DIR
@@ -253,30 +259,7 @@ NUM_WBC_CLASSES = len(
 # ATTRIBUTE NAMES
 # ============================================================
 
-ATTRIBUTE_NAMES = [
-
-    "cell_size",
-
-    "cell_shape",
-
-    "nucleus_shape",
-
-    "nuclear_cytoplasmic_ratio",
-
-    "chromatin_density",
-
-    "cytoplasm_vacuole",
-
-    "cytoplasm_texture",
-
-    "cytoplasm_colour",
-
-    "granule_type",
-
-    "granule_colour",
-
-    "granularity",
-]
+# Shared with dataset encoders and every model head.
 
 NUM_ATTRIBUTES = len(
     ATTRIBUTE_NAMES
@@ -474,20 +457,11 @@ ATTENTION_SINK_WARNING_THRESHOLD = 25.0
 
 
 # ============================================================
-# CREATE REQUIRED DIRECTORIES
+# OUTPUT DIRECTORIES
 # ============================================================
 
-for directory in [
-    OUTPUT_DIR,
-    CHECKPOINT_DIR,
-    LOG_DIR,
-    PLOT_DIR,
-]:
-
-    directory.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+# Writers create directories when saving. Importing this module for inference
+# must also work from a read-only application installation.
 
 
 # ============================================================

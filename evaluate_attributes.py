@@ -60,8 +60,8 @@ from data.encoders import (
     ATTRIBUTE_NAMES,
     ATTRIBUTE_ENCODERS,
 )
-from models.complete_model import ExplainableWBCModel
 
+from utils.model_loading import load_model as load_pipeline_model
 
 # ==========================================================
 # Build Reverse Label Maps (index -> human-readable name)
@@ -91,19 +91,7 @@ def build_index_to_label():
 # ==========================================================
 
 def load_model():
-
-    model = ExplainableWBCModel().to(DEVICE)
-
-    model.load_state_dict(
-        torch.load(
-            CHECKPOINT_DIR / BEST_MODEL_NAME,
-            map_location=DEVICE,
-        )
-    )
-
-    model.eval()
-
-    return model
+    return load_pipeline_model(device=DEVICE)
 
 
 # ==========================================================
@@ -120,14 +108,16 @@ def collect_predictions(model, loader):
 
     y_true = {name: [] for name in ATTRIBUTE_NAMES}
     y_pred = {name: [] for name in ATTRIBUTE_NAMES}
+    model.eval()
+    device = next(model.parameters()).device
 
     with torch.no_grad():
 
         for batch in loader:
 
-            images = batch["image"].to(DEVICE)
+            images = batch["images"].to(device)
 
-            attributes = batch["attributes"].to(DEVICE)
+            attributes = batch["attributes"].to(device)
             # (B, 11)
 
             outputs = model(images)
@@ -220,8 +210,9 @@ def main():
         print(f"Gap over baseline     : {gap*100:+6.2f} points")
 
         if gap < 0.05:
-            print("  ⚠️  WARNING: model is barely beating the majority-class "
-                  "guess. This head likely has NOT learned a real signal.")
+            print("  Accuracy is less than 5 percentage points above the majority "
+                  "baseline. Inspect per-class recall and the confusion matrix; "
+                  "this gap alone does not establish whether the head learned useful features.")
 
         print()
 
@@ -261,7 +252,7 @@ def main():
 
     for name, acc, baseline, gap in summary_rows:
 
-        flag = " <-- likely shortcut / undertrained" if gap < 0.05 else ""
+        flag = " <-- inspect per-class metrics" if gap < 0.05 else ""
 
         print(
             f"{name:30} {acc*100:9.2f}% {baseline*100:9.2f}% "

@@ -7,8 +7,10 @@ import random
 import numpy as np
 import torch
 
+from config import SEED
 
-def set_seed(seed: int = 42):
+
+def set_seed(seed: int = SEED):
     """
     Set random seeds for reproducible experiments.
     """

@@ -1,0 +1,5 @@
+# Prediction API and export; compatible with the original torch 2.2 setup.
+torch>=2.2.0
+torchvision>=0.17.0
+numpy>=1.26,<2
+Pillow>=10.0

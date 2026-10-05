@@ -55,7 +55,9 @@ from config import (
     ATTRIBUTE_NAMES,
 )
 
-from models.complete_model import CompleteMALViT
+from utils.model_loading import load_model as load_pipeline_model
+from data.transforms import test_transform
+from inference import predict_details, load_rgb_image
 
 from data.encoders import (
     decode_wbc,
@@ -91,55 +93,9 @@ _MODEL = None
 
 
 def load_model():
-    """
-    Load the trained MAL-ViT model once.
-
-    Returns
-    -------
-    CompleteMALViT
-        Loaded evaluation model.
-    """
-
     global _MODEL
-
-    if _MODEL is not None:
-        return _MODEL
-
-    device = torch.device(
-        DEVICE
-    )
-
-    model = CompleteMALViT()
-
-    checkpoint = torch.load(
-        BEST_MODEL_PATH,
-        map_location=device,
-    )
-
-    if not isinstance(
-        checkpoint,
-        dict,
-    ):
-        raise TypeError(
-            "Checkpoint must be a dictionary."
-        )
-
-    if "model_state_dict" not in checkpoint:
-        raise KeyError(
-            "Checkpoint does not contain "
-            "'model_state_dict'."
-        )
-
-    model.load_state_dict(
-        checkpoint["model_state_dict"]
-    )
-
-    model.to(device)
-
-    model.eval()
-
-    _MODEL = model
-
+    if _MODEL is None:
+        _MODEL = load_pipeline_model(device=DEVICE)
     return _MODEL
 
 
@@ -148,51 +104,8 @@ def load_model():
 # ============================================================
 
 def preprocess_image(image):
-    """
-    Convert a PIL image into a MAL-ViT input tensor.
-
-    Parameters
-    ----------
-    image : PIL.Image.Image
-
-    Returns
-    -------
-    torch.Tensor
-        Shape:
-            (1, 3, IMAGE_SIZE, IMAGE_SIZE)
-    """
-
-    image = image.convert(
-        "RGB"
-    )
-
-    image = image.resize(
-        (
-            IMAGE_SIZE,
-            IMAGE_SIZE,
-        )
-    )
-
-    image_array = np.asarray(
-        image,
-        dtype=np.float32,
-    )
-
-    image_array /= 255.0
-
-    tensor = torch.from_numpy(
-        image_array
-    )
-
-    tensor = tensor.permute(
-        2,
-        0,
-        1,
-    )
-
-    tensor = tensor.unsqueeze(0)
-
-    return tensor
+    """Use exactly the normalization and resize used for validation/inference."""
+    return test_transform(image.convert("RGB")).unsqueeze(0)
 
 
 # ============================================================
@@ -482,6 +395,7 @@ def create_overlay(
 def generate_attribute_cam(
     image,
     attribute_name,
+    model=None,
 ):
     """
     Generate attribute-specific XAI maps.
@@ -516,11 +430,9 @@ def generate_attribute_cam(
             f"{ATTRIBUTE_NAMES}"
         )
 
-    model = load_model()
+    model = load_model() if model is None else model
 
-    device = torch.device(
-        DEVICE
-    )
+    device = next(model.parameters()).device
 
     input_tensor = preprocess_image(
         image
@@ -536,7 +448,7 @@ def generate_attribute_cam(
     # Forward pass
     # --------------------------------------------------------
 
-    outputs = model(
+    outputs = model.extract_attributes(
         input_tensor,
         return_attention=True,
     )
@@ -573,15 +485,7 @@ def generate_attribute_cam(
     # Gradient
     # --------------------------------------------------------
 
-    model.zero_grad(
-        set_to_none=True
-    )
-
-    if input_tensor.grad is not None:
-
-        input_tensor.grad.zero_()
-
-    predicted_logit.backward()
+    input_gradient, = torch.autograd.grad(predicted_logit, input_tensor)
 
     # --------------------------------------------------------
     # Transformer attention
@@ -693,7 +597,6 @@ def generate_attribute_cam(
     # Gradient information
     # --------------------------------------------------------
 
-    input_gradient = input_tensor.grad
 
     if input_gradient is None:
 
@@ -875,52 +778,13 @@ def generate_attribute_cam(
 # ALL ATTRIBUTE CAMS
 # ============================================================
 
-def generate_all_attribute_cams(
-    image,
-):
-    """
-    Generate explanations for all 11 morphology attributes.
-
-    Parameters
-    ----------
-    image : PIL.Image.Image or str or Path
-
-    Returns
-    -------
-    dict
-        attribute name -> explanation dictionary
-    """
-
-    if isinstance(
-        image,
-        (
-            str,
-            Path,
-        ),
-    ):
-
-        image = Image.open(
-            image
-        ).convert(
-            "RGB"
-        )
-
+def generate_all_attribute_cams(image, model=None):
+    image = load_rgb_image(image)
+    model = load_model() if model is None else model
     results = {}
-
     for attribute_name in ATTRIBUTE_NAMES:
-
-        print(
-            f"Generating CAM: "
-            f"{attribute_name}"
-        )
-
-        results[
-            attribute_name
-        ] = generate_attribute_cam(
-            image,
-            attribute_name,
-        )
-
+        print(f"Generating attribute explanation: {attribute_name}")
+        results[attribute_name] = generate_attribute_cam(image, attribute_name, model=model)
     return results
 
 
@@ -928,112 +792,12 @@ def generate_all_attribute_cams(
 # COMPLETE PREDICTION + EXPLANATION
 # ============================================================
 
-def generate_explanations(
-    image,
-):
-    """
-    Generate WBC prediction, morphology predictions,
-    and all attribute explanations.
-
-    Returns
-    -------
-    dict
-    """
-
-    if isinstance(
-        image,
-        (
-            str,
-            Path,
-        ),
-    ):
-
-        image = Image.open(
-            image
-        ).convert(
-            "RGB"
-        )
-
-    model = load_model()
-
-    device = torch.device(
-        DEVICE
-    )
-
-    input_tensor = preprocess_image(
-        image
-    ).to(device)
-
-    with torch.no_grad():
-
-        outputs = model(
-            input_tensor
-        )
-
-    # --------------------------------------------------------
-    # WBC
-    # --------------------------------------------------------
-
-    wbc_index = int(
-        outputs[
-            "wbc_prediction"
-        ][0].item()
-    )
-
-    wbc_name = decode_wbc(
-        wbc_index
-    )
-
-    # --------------------------------------------------------
-    # Attributes
-    # --------------------------------------------------------
-
-    attributes = {}
-
-    for attribute_name in ATTRIBUTE_NAMES:
-
-        logits = outputs[
-            "attribute_predictions"
-        ][
-            attribute_name
-        ]
-
-        index = int(
-            torch.argmax(
-                logits,
-                dim=1,
-            )[0].item()
-        )
-
-        attributes[
-            attribute_name
-        ] = decode_attribute(
-            attribute_name,
-            index,
-        )
-
-    # --------------------------------------------------------
-    # CAMs
-    # --------------------------------------------------------
-
-    cams = generate_all_attribute_cams(
-        image
-    )
-
-    return {
-
-        "wbc":
-            wbc_name,
-
-        "wbc_index":
-            wbc_index,
-
-        "attributes":
-            attributes,
-
-        "cams":
-            cams,
-    }
+def generate_explanations(image, model=None):
+    image = load_rgb_image(image)
+    model = load_model() if model is None else model
+    results = predict_details(image, model=model)
+    results["cams"] = generate_all_attribute_cams(image, model=model)
+    return results
 
 
 # ============================================================

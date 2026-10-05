@@ -11,6 +11,23 @@ import matplotlib.pyplot as plt
 from config import PLOT_DIR
 
 
+def _history_rows(history):
+    """Accept current TrainingHistory/checkpoint entries and legacy flat logs."""
+    rows = []
+    for item in getattr(history, "epochs", history):
+        if "train" in item and "val" in item:
+            rows.append({
+                "epoch": item["epoch"],
+                "train_loss": item["train"]["total_loss"],
+                "val_loss": item["val"]["total_loss"],
+                "train_accuracy": item["train"]["accuracy"],
+                "val_accuracy": item["val"]["accuracy"],
+            })
+        else:
+            rows.append(item)
+    return rows
+
+
 def plot_training_history(
     history,
     save=True,
@@ -18,6 +35,8 @@ def plot_training_history(
 
     if not history:
         return
+
+    history = _history_rows(history)
 
     epochs = [
         item["epoch"]
@@ -61,6 +80,8 @@ def plot_training_history(
 
     if save:
 
+        PLOT_DIR.mkdir(parents=True, exist_ok=True)
+
         output_path = (
             PLOT_DIR
             / "training_loss.png"
@@ -86,6 +107,8 @@ def plot_accuracy(
 
     if not history:
         return
+
+    history = _history_rows(history)
 
     epochs = [
         item["epoch"]
@@ -128,6 +151,8 @@ def plot_accuracy(
     plt.grid(True)
 
     if save:
+
+        PLOT_DIR.mkdir(parents=True, exist_ok=True)
 
         output_path = (
             PLOT_DIR

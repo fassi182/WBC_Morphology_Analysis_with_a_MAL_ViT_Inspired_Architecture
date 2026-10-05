@@ -1,32 +1,18 @@
-"""
-app.py
+"""Streamlit interface for the MAL-ViT-inspired WBC project.
 
-Streamlit UI for MAL-ViT WBC Morphology Analysis.
-
-Pipeline
---------
-Upload Image
-    ↓
-MAL-ViT
-    ↓
-WBC Prediction
-    ↓
-11 Morphology Predictions
-    ↓
-Attribute-Level XAI
-    ├── Grad-CAM-style attribution
-    ├── Attention map
-    └── Gradient map
+Upload image -> eleven morphology distributions -> WBC type.
+Explanations show attribute attention, input gradients, and their combination.
 """
 
-from pathlib import Path
+import argparse
+import logging
 
 import streamlit as st
-import numpy as np
 
 from PIL import Image
 
 from data.encoders import ATTRIBUTE_NAMES
+from utils.model_loading import load_model as load_pipeline_model
 
 from utils.xai.vit_grad_cam import (
     generate_explanations,
@@ -35,12 +21,28 @@ from utils.xai.vit_grad_cam import (
 )
 
 
+def get_arguments():
+    parser = argparse.ArgumentParser(description="MAL-ViT-inspired WBC GUI")
+    parser.add_argument("--checkpoint")
+    parser.add_argument("--attribute-checkpoint")
+    arguments, _ = parser.parse_known_args()
+    return arguments
+
+
+@st.cache_resource
+def get_app_model(checkpoint_path=None, attribute_checkpoint_path=None):
+    return load_pipeline_model(checkpoint_path, attribute_checkpoint_path=attribute_checkpoint_path)
+
+
+arguments = get_arguments()
+
+
 # ============================================================
 # PAGE CONFIGURATION
 # ============================================================
 
 st.set_page_config(
-    page_title="MAL-ViT WBC Analysis",
+    page_title="MAL-ViT-Inspired WBC Analysis",
     page_icon="🔬",
     layout="wide",
 )
@@ -91,14 +93,13 @@ st.markdown(
 # ============================================================
 
 st.markdown(
-    '<div class="main-title">MAL-ViT WBC Morphology Analysis</div>',
+    '<div class="main-title">WBC Morphology Analysis: MAL-ViT-Inspired</div>',
     unsafe_allow_html=True,
 )
 
 st.markdown(
     '<div class="subtitle">'
-    "White Blood Cell Classification, Morphology Prediction "
-    "and Attribute-Level Explainability"
+    "Image to 11 morphology attributes to WBC type"
     "</div>",
     unsafe_allow_html=True,
 )
@@ -110,12 +111,13 @@ st.markdown(
 
 with st.sidebar:
 
-    st.header("About MAL-ViT")
+    st.header("About this model")
 
     st.write(
         """
-        This system uses MAL-ViT to analyze white blood cell
-        morphology through multiple attribute-specific tokens.
+        This independent project adapts MAL-ViT's attribute-token idea to
+        WBC morphology and adds an attribute-to-WBC classifier.
+        It is not an exact reproduction of the paper.
         """
     )
 
@@ -134,7 +136,7 @@ with st.sidebar:
 
     st.write("### Explainability")
 
-    st.write("• Attribute Grad-CAM")
+    st.write("• Combined attention-gradient map")
     st.write("• Attribute Attention")
     st.write("• Gradient Attribution")
 
@@ -202,7 +204,7 @@ with image_column:
     st.image(
         image,
         caption="Uploaded WBC Image",
-        use_container_width=True,
+        width="stretch",
     )
 
 with info_column:
@@ -231,7 +233,7 @@ st.divider()
 analyze = st.button(
     "🔬 Analyze WBC",
     type="primary",
-    use_container_width=True,
+    width="stretch",
 )
 
 
@@ -258,16 +260,15 @@ if analyze:
     try:
 
         status.write(
-            "Loading MAL-ViT and generating predictions..."
+            "Predicting morphology, WBC type, and explanations..."
         )
 
         progress.progress(
             10
         )
 
-        results = generate_explanations(
-            image
-        )
+        model = get_app_model(arguments.checkpoint, arguments.attribute_checkpoint)
+        results = generate_explanations(image, model=model)
 
         progress.progress(
             100
@@ -279,63 +280,22 @@ if analyze:
 
     except Exception as error:
 
+        logging.exception("WBC analysis failed")
+
         progress.empty()
 
         status.empty()
 
         st.error(
-            "Analysis failed."
+            f"Analysis failed: {error}"
         )
 
         st.write(
-            "Please check the PowerShell terminal running "
+            "Please check the terminal running "
             "Streamlit for the detailed error."
         )
 
         st.stop()
-
-
-    # ========================================================
-    # WBC PREDICTION
-    # ========================================================
-
-    st.divider()
-
-    st.header("WBC Classification")
-
-    wbc_column, index_column = st.columns(
-        [2, 1]
-    )
-
-    with wbc_column:
-
-        st.markdown(
-            '<div class="prediction-box">',
-            unsafe_allow_html=True,
-        )
-
-        st.subheader(
-            "Predicted WBC Type"
-        )
-
-        st.success(
-            results["wbc"].replace(
-                "_",
-                " ",
-            ).title()
-        )
-
-        st.markdown(
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
-    with index_column:
-
-        st.metric(
-            "Class Index",
-            results["wbc_index"],
-        )
 
 
     # ========================================================
@@ -347,6 +307,9 @@ if analyze:
     st.header(
         "Morphology Predictions"
     )
+
+    with st.expander("Attribute probabilities used by the WBC classifier"):
+        st.json(results["attribute_probabilities"])
 
     attributes = results[
         "attributes"
@@ -406,6 +369,50 @@ if analyze:
 
 
     # ========================================================
+    # WBC PREDICTION
+    # ========================================================
+
+    st.divider()
+
+    st.header("WBC Type from the 11 Attributes")
+    st.caption("The classifier uses the probability distribution for each attribute shown above.")
+
+    wbc_column, index_column = st.columns(
+        [2, 1]
+    )
+
+    with wbc_column:
+
+        st.markdown(
+            '<div class="prediction-box">',
+            unsafe_allow_html=True,
+        )
+
+        st.subheader(
+            "Predicted WBC Type"
+        )
+
+        st.success(
+            results["wbc"].replace(
+                "_",
+                " ",
+            ).title()
+        )
+
+        st.markdown(
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+    with index_column:
+
+        st.metric(
+            "Class Index",
+            results["wbc_index"],
+        )
+
+
+    # ========================================================
     # XAI SECTION
     # ========================================================
 
@@ -418,7 +425,7 @@ if analyze:
     st.write(
         """
         Each morphology attribute has its own explanation.
-        The Grad-CAM-style map combines the attribute-token
+        The combined map multiplies the attribute-token
         attention with gradient information from the selected
         attribute prediction.
         """
@@ -537,8 +544,8 @@ if analyze:
 
             st.image(
                 gradcam_image,
-                caption="Grad-CAM",
-                use_container_width=True,
+                caption="Attention x input gradient",
+                width="stretch",
             )
 
 
@@ -551,7 +558,7 @@ if analyze:
             st.image(
                 attention_image,
                 caption="Attribute Attention",
-                use_container_width=True,
+                width="stretch",
             )
 
 
@@ -564,7 +571,7 @@ if analyze:
             st.image(
                 gradient_image,
                 caption="Input Gradient",
-                use_container_width=True,
+                width="stretch",
             )
 
 
@@ -595,7 +602,7 @@ if analyze:
 st.markdown(
     """
     <div style="text-align:center; color:#888888; padding:20px;">
-        MAL-ViT • WBC Morphology Analysis • Attribute-Level XAI
+        MAL-ViT-inspired • WBC Morphology Analysis • Attribute-Level XAI
     </div>
     """,
     unsafe_allow_html=True,

@@ -2,21 +2,21 @@
 MAL-ViT Full Pipeline Test
 
 Data
- ↓
+ â†“
 DataLoader
- ↓
+ â†“
 Model
- ↓
+ â†“
 Forward
- ↓
+ â†“
 Loss
- ↓
+ â†“
 Backward
- ↓
+ â†“
 Optimizer
- ↓
+ â†“
 Validation
- ↓
+ â†“
 Checkpoint
 """
 

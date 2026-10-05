@@ -6,6 +6,8 @@ Classification and morphology metrics.
 
 import torch
 
+from data.encoders import ATTRIBUTE_NAMES
+
 
 def classification_accuracy(
     predictions,
@@ -50,12 +52,9 @@ def attribute_accuracy(
 
     accuracies = {}
 
-    for index, (
-        name,
-        logits,
-    ) in enumerate(
-        predictions.items()
-    ):
+    for index, name in enumerate(ATTRIBUTE_NAMES):
+
+        logits = predictions[name]
 
         predicted = logits.argmax(
             dim=1

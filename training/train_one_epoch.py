@@ -42,7 +42,7 @@ def main():
 
     print("\n[2] Creating model...")
 
-    model = CompleteMALViT()
+    model = CompleteMALViT().to(DEVICE)
 
     print("\n[3] Creating optimizer...")
 

@@ -18,6 +18,7 @@ Expected batch format:
 
 import torch
 
+from config import GRADIENT_CLIP_NORM
 from training.losses import compute_total_loss
 
 
@@ -51,6 +52,8 @@ def train_step(
     total_loss = loss_dict["total_loss"]
 
     total_loss.backward()
+
+    torch.nn.utils.clip_grad_norm_(model.parameters(), GRADIENT_CLIP_NORM)
 
     optimizer.step()
 
@@ -164,6 +167,9 @@ def train_epoch(
 
         total_samples += batch_size
 
+    if total_samples == 0:
+        raise ValueError("Training dataloader contains no samples")
+
     return {
         "total_loss": total_loss / total_samples,
         "wbc_loss": total_wbc_loss / total_samples,
@@ -219,6 +225,9 @@ def validate_epoch(
         )
 
         total_samples += batch_size
+
+    if total_samples == 0:
+        raise ValueError("Validation dataloader contains no samples")
 
     return {
         "total_loss": total_loss / total_samples,
